@@ -1,0 +1,120 @@
+## Introduction
+
+Vertex AI User-Managed Workbench instances provide an interactive JupyterLab environment for machine learning workflows. These are essentially Google Compute Engine instances based on a hardened Debian image maintained by Google. Key machine learning frameworks, libraries, and the JupyterHub service are pre-installed into the VM image, and all services operate as `systemd` processes.
+
+To support environment customization, User-Managed Workbench instances allow execution of a root-level post-startup script. This script is passed via instance metadata and runs at boot time, enabling bootstrapping operations.
+
+These instances are currently deployed using Terraform and Jenkins, with GitOps practices in place to manage the lifecycle of workbench instances.
+
+## Problem Statement
+
+Google Cloud has announced the deprecation of Vertex AI User-Managed Workbench instances, with support ending on April 14, 2025. Post this date, the creation of new user-managed notebook instances will be disabled, and existing instances will no longer receive patches, updates, or upgrades.
+
+## Background
+
+In place of the deprecated user-managed notebooks, Google Cloud recommends migrating to Vertex AI Workbench Instances. These new instances integrate the customizable aspects of user-managed notebooks with the streamlined, managed experience of managed notebooks. Notably, they support container-based environments, allowing users to define custom containers tailored to specific project requirements.
+
+The shift to container-based Workbench Instances offers several advantages:
+
+- **Enhanced Security**: Containers provide isolated environments, reducing potential attack surfaces.
+- **Portability**: Containerized environments can be easily moved across different platforms and infrastructures.
+- **Consistency**: Ensures uniform environments across development, testing, and production stages.
+
+This guide aims to assist users in understanding the implications of this transition and provides steps to migrate to the new container-based Workbench Instances effectively.
+
+---
+
+## Workbench Deployment
+
+The deployment of container-based Vertex AI Workbench instances continues to rely on the same CI/CD pipelines, GitOps workflows, and SRE operational models already in place for User-Managed Workbenches. This ensures a smooth transition and minimizes disruption to existing processes.
+
+### Configuration Comparison
+
+#### Terraform Configuration Changes
+
+To support the container-based Vertex AI Workbench, the primary change in Terraform involves replacing the VM-specific settings with a container image block. Below is a minimal illustration of this change:
+
+**Before (User-Managed Workbench):**
+
+```hcl
+resource "google_workbench_instance" "legacy" {
+  gce_setup {
+    machine_type = "n1-standard-4"
+    metadata = {
+      post-startup-script = "gs://your-bucket/startup-script.sh"
+    }
+  }
+}
+```
+
+**After (Container-Based Workbench):**
+
+```hcl
+resource "google_workbench_instance" "container" {
+  gce_setup {
+    machine_type = "n1-standard-4"
+
+    container_image {
+      repository = "us-central1-docker.pkg.dev/your-project/deeplearning-platform-release/workbench-container-nonroot"
+      tag        = "v4.0.0"
+    }
+
+    metadata = {
+      post-startup-script = "gs://your-bucket/container-startup-script.sh"
+    }
+  }
+}
+```
+
+#### Post-Startup Script Behavior on COS
+
+In the container-based Workbench setup, the `post-startup-script` remains available but has a more limited scope compared to its usage in VM-based instances. Previously, it had full system access to configure the operating system, install packages, and modify services. In contrast, on Container-Optimized OS (COS), it operates in a restricted host environment.
+
+As a result, the script is best suited for lightweight, host-level tasks—such as setting metadata, configuring proxies, or handling disk mounting. Any environment-specific initialization or software configuration should instead be handled within the container image itself. This encourages a cleaner separation between infrastructure provisioning and runtime environment setup, improving consistency and portability across deployments.
+
+| Aspect                | User-Managed Workbench (Legacy)                       | Container-Based Workbench (New)             |
+| --------------------- | ----------------------------------------------------- | ------------------------------------------- |
+| Execution Environment | systemd-based services on VM OS                       | Docker container on Container-Optimized OS  |
+| Customization Method  | Post-startup script via instance metadata             | Entrypoint script in container via metadata |
+| Image Type            | Hardened Debian image with pre-installed ML libraries | Google Deep Learning container image        |
+| VSCode Integration    | Not natively supported                                | Supported as a sidecar service in container |
+| OS-Level Access       | Full access to VM                                     | Access scoped to container                  |
+
+## Container Image Supply Chain
+
+The container image supply chain for Vertex AI Workbench follows a two-step approach to ensure both compliance with internal security policies and flexibility for project-specific customization. In the first step, a golden copy of Google’s Deep Learning Container image is created by resolving vulnerabilities in line with the bank’s standards. In the second step, this golden copy acts as the base image for building custom images with project-specific tools, libraries, and configurations.
+
+Both steps utilize the bank’s standard image building pipelines but are hosted in separate Git repositories to support clear segregation of concerns—security remediation and compliance are handled independently from customization. This two-step design supports reusability, governance, and streamlined auditability while maintaining agility for teams needing tailored environments.
+
+The move to container-based Workbench instances shifts responsibility for environment definition from the VM to the container image itself. This section covers key considerations in managing container images effectively.
+
+### Image Acquisition - Golden Copy Creation
+
+Golden copy images are produced by sourcing hardened Deep Learning Containers from the central GCP project managed by Google. These images undergo vulnerability scanning and remediation as per the bank’s internal security and compliance policies. The output is a pre-approved base image that forms the foundation for all downstream customizations.
+
+This step uses the bank’s standard image building pipeline and is maintained in a dedicated Git repository. The sole purpose of this repository is to track and resolve security vulnerabilities, ensuring alignment with container governance standards.
+
+
+
+### Custom Image Building
+
+Building on the golden copy, custom container images are produced by layering in project-specific requirements such as (but not limited to):
+
+- Bank CA certificates
+- Python packages and ML libraries
+- VSCode Server
+- JupyterLab configurations and extensions
+
+These Dockerfiles are housed in a separate Git repository, enabling teams to independently manage, version, and deploy environment-specific customizations through CI/CD.
+
+### Image Deployment
+
+Once built and validated, images should be pushed to a secure, access-controlled Artifact Registry (GAR) configured for production workloads. Only after passing quality gates and automated validations is the release candidate deployed to GAR, from where it is consumed by Terraform to provision Workbench instances.
+
+The bank enforces strict container registry governance through guardrails that whitelist only approved container registries. This ensures that all deployed images originate from validated, policy-compliant sources.
+
+- Push final images to `us-central1-docker.pkg.dev/your-project/...`
+- Use semantic versioning for image tags (e.g., `v4.0.0`)
+- Reference images explicitly in Terraform under the `container_image` block
+
+This process guarantees that all container-based Workbench instances launch with secure, reproducible, and policy-aligned environments.
