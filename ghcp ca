@@ -1,0 +1,329 @@
+This list is structured into:
+
+Identity & Permission Controls
+
+Repository-Level Controls
+
+Branch Protection & Pull-Request Controls
+
+CI/CD & Runner Controls
+
+GHAS & Security Scanning Controls
+
+Network, Data & Runtime Controls
+
+Observability, Logging & SIEM Controls
+
+Governance, Policy & Human Controls
+
+This is the full blueprint you would present to a CISO or Engineering Governance Board.
+
+✅ 1. IDENTITY & PERMISSION CONTROLS
+
+The Coding Agent is only as safe as the identity it runs under.
+
+1.1 Use a dedicated GitHub App identity for the Coding Agent
+
+Never use org-level PATs or personal access tokens.
+
+Configure it as a GitHub App with repo-scoped permissions only.
+
+1.2 Limit the agent to approved repos only
+
+Maintain an allow-list (e.g. .github/copilot-allowed-repos.yml).
+
+Enforce with:
+
+GitHub org rules
+
+Custom policy bot
+
+Webhook enforcement
+
+1.3 Principle of least privilege
+
+Agent must not have:
+
+Admin rights
+
+Repo creation rights
+
+Delete/force-push privileges
+
+Merge rights into protected branches
+
+Grant only:
+
+Read repo
+
+Write to branches
+
+Open PRs
+
+Comment on issues
+
+1.4 No direct deployment permissions
+
+The Coding Agent must never deploy to cloud or on-prem environments.
+
+✅ 2. REPOSITORY-LEVEL CONTROLS
+2.1 Repo Classification
+
+Classify repos into tiers and allow the agent only for safe repositories:
+
+Tier	Description	Copilot Agent?
+1 – Restricted	Fraud logic, sensitive IP, regulated code	❌ No
+2 – Controlled	Back-end services, infra-as-code	✔️ Yes, with enhanced reviews
+3 – General	Utilities, internal tools	✔️ Yes
+2.2 Secret Hygiene
+
+Ensure GHAS Secret Scanning + Push Protection is enabled.
+
+Repository must be secret-free before agent is enabled.
+
+2.3 Mandatory Directory Boundaries
+
+Prevent the agent from touching sensitive directories:
+
+/auth/
+
+/crypto/
+
+/security/
+
+/payments/
+
+/infra/prod/
+
+Enforced via:
+
+Code Owners
+
+Path protection rules
+
+CI regex guards
+
+✅ 3. BRANCH PROTECTION & PULL-REQUEST CONTROLS
+3.1 No agent merges
+
+Agent must not merge its own PRs.
+
+Mandatory human review required.
+
+3.2 Add an “AI-generated change” label automatically
+
+Using GitHub Actions workflow:
+
+on:
+  pull_request:
+    types: [opened]
+jobs:
+  label-ai:
+    runs-on: ubuntu-latest
+    if: github.actor == 'github-copilot-agent[bot]'
+    steps:
+      - name: Add AI label
+        uses: actions-ecosystem/action-add-labels@v1
+        with:
+          labels: ai-generated
+
+3.3 Required Status Checks Before Merge
+
+Enforce:
+
+CodeQL SAST
+
+GHAS Secret Scan
+
+GHAS Dependency Scan
+
+IaC scanners (Checkov/OPA/Terratest)
+
+Linting & Unit Tests
+
+3.4 Elevated Review Requirement
+
+If agent touches infra/auth/security/payment code → require:
+
+Senior engineer + security reviewer approval
+
+✅ 4. CI/CD & RUNNER CONTROLS
+4.1 Runner Isolation
+
+Use separate runner pools:
+
+Pool A → Human Builds
+
+Pool B → Deployments to dev/test
+
+Pool C → AI-Agent-only workflows (build-only)
+
+Coding Agent must only use build-only runners with:
+
+No cloud IAM
+
+No access to encrypted secrets
+
+No deploy permissions
+
+No access to private networks
+
+4.2 No broad GITHUB_TOKEN
+
+Override default with:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+
+…and nothing else.
+
+4.3 Egress Controls
+
+Disallow outbound calls except:
+
+GitHub APIs
+
+Artifact registries
+
+Prevent network access to internal systems.
+
+✅ 5. GHAS & SECURITY SCANNING CONTROLS
+Mandatory for every repo using Coding Agent:
+
+CodeQL scanning (block on critical findings)
+
+Dependency vulnerability scanning
+
+Secret scanning
+
+Push protection
+
+Dependency review action
+
+License compliance scanning
+
+Custom CodeQL Rules for enterprise
+
+Ban raw DB access
+
+Ban direct HTTP calls
+
+Ban weak crypto
+
+Ban direct access to cloud SDKs without platform wrappers
+
+Ban public S3/GCS buckets in IaC
+
+✅ 6. NETWORK, DATA & RUNTIME CONTROLS
+For IaC repos:
+
+Enforce Terraform Sentinel, OPA Gatekeeper, Kyverno:
+
+No open CIDR ranges
+
+No public buckets
+
+No unauthenticated load balancers
+
+TLS 1.2+ only
+
+IAM least-privilege enforcement
+
+For CI runners:
+
+Egress allow-list
+
+Block outbound to sensitive production systems
+
+No persistent credentials on runners
+
+✅ 7. OBSERVABILITY, LOGGING & SIEM CONTROLS
+7.1 Centralised Logging
+
+Ingest into SIEM:
+
+GitHub Audit Logs
+
+Pull Request events
+
+Agent workflow runs
+
+Runner logs
+
+Code scanning results
+
+7.2 Tag all agent commits
+
+Add commit message prefix:
+
+[AI-AUTHORED]
+
+7.3 Build AI Usage Dashboard
+
+Track:
+
+AI PRs per repo
+
+Vulnerability rate for AI vs human PRs
+
+Time-to-fix for AI commits
+
+Agent activity heatmap
+
+Repos with highest AI involvement
+
+7.4 Anomaly Detection Rules
+
+Alert if:
+
+Agent commits to restricted folders
+
+Agent touches production IaC
+
+Agent introduces new external dependencies
+
+Agent modifies GitHub workflows
+
+Agent commits with unusually large code diffs
+
+✅ 8. GOVERNANCE, POLICY & PEOPLE CONTROLS
+8.1 AI Coding Policy
+
+Document rules for:
+
+Where agent can/cannot be used
+
+Types of tasks allowed
+
+Types of tasks forbidden
+
+Mandatory review depth
+
+What data can be supplied
+
+Developer responsibilities (human accountability)
+
+8.2 Mandatory AI Secure Coding Training
+
+Topics:
+
+Prompt hygiene
+
+Reviewing AI-generated PRs
+
+Identifying hallucinated patterns
+
+Secure-by-default infra (Terraform / K8s / CI)
+
+8.3 Monthly Governance Review
+
+Review AI PR metrics
+
+Update allow-lists/deny-lists
+
+Evaluate incident patterns
+
+Review whether repos are safe for agent use
