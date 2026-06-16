@@ -1,0 +1,63 @@
+                                  ┌──────────────┐
+                                  │ USER BROWSER │
+                                  └──────┬───────┘
+                       (1) https · Host: matlas.34.171.98.171.nip.io
+                                         │
+══════════ P3: atlas-dev-2606110935  ·  atlas GKE (private)  ═════════════════════════════════
+                                         ▼
+                        ext LB 34.171.98.171:80
+                   ┌──────────────────────────────────┐
+                   │     Istio ingressgateway          │
+                   └───┬───────────────────────────┬───┘
+        (2) VS atlas-vs│ (matlas.*)                 │ VS keycloak-vs (keycloak.*)
+                       ▼                            ▼
+              ┌─────────────────┐          ┌──────────────────┐
+       (3/5)  │  oauth2-proxy   │◀──OIDC──▶│  Keycloak :8080  │  realm "atlas"
+              │     :4180       │  (4)     │  sam/phil/ben →  │  groups claim
+              │                 │          │  ml-eng/analyst/ │
+              │  session ◀────────┐        │  operations      │
+              └────────┬────────┘ │        └──────────────────┘
+                       │       ┌──▼──────┐
+                       │       │ Redis   │  server-side session
+                       │       │ :6379   │
+                       │       └─────────┘
+        (6) inject  Authorization: Bearer <ID-JWT>  (aud=atlas-proxy, groups)
+                       ▼
+   ┌───────────────────────────────────────────────────────┐        ext-authz gRPC
+   │  atlas-api  ·  Envoy SIDECAR  (7)                       │     ┌────────────────┐
+   │   1. PeerAuth          mTLS PERMISSIVE                  │     │   OPA  :9191   │
+   │   2. RequestAuth       iss / in-cluster JWKS / aud ─────┼────▶│ grants[res]    │
+   │   3. require-jwt       principal else 403               │◀────│  [role][verb]  │
+   │   4. CUSTOM → opa-ext-authz  ──────────────────────────┼─────│  + tier guard  │
+   └───────────────────────────┬───────────────────────────┘ allow/└────────────────┘
+                               ▼                              deny
+                   ┌──────────────────────────┐
+                   │  atlas-api :8080 (FastAPI)│  (8)
+                   │  • actor(): JWT groups    │
+                   │  • entitlement twin       │
+                   │  • catalog → idp adapter  │
+                   └────────────┬─────────────┘
+        (9) POST /api/scaffolder/v2/tasks
+            Authorization: Bearer <IDP_TOKEN>   ← static service token (not user's)
+            body { templateRef, values:{…spec, owner:<user>} }
+                                │
+                                ▼   internal LB  10.10.16.4:7007   ◀── THE single cross-cluster wire
+══════════ P1: matlas-net-platform  ·  tooling GKE (private)  ═════════════════════════════════
+                   ┌──────────────────────────┐
+            (10)   │  Backstage scaffolder     │───reads/tasks──▶ (inventory, owner-filtered)
+                   └───┬──────────────────┬────┘
+            clone TF   │                  │  tofu apply  (Workload Identity)
+                       ▼                  ▼
+              ┌─────────────────┐   ┌──────────────────┐
+              │ Gitea (mirror)  │   │ provisioner GSA  │  least-privilege
+              │ matlas-archetyp │   │  + TF state →P1  │  (state bucket OUTSIDE perimeter)
+              └─────────────────┘   └────────┬─────────┘
+                                             │  VPC-SC ingress (allow-listed SA)
+                                             ▼
+══════════ P2: matlas-net-workload  ·  VPC-SC perimeter  ══════════════════════════════════════
+              ┌───────────────┬────────────────┬──────────────────────┐
+              │  GCS bucket   │ BigQuery dataset│ Vertex Workbench/Pipe │
+              └───────────────┴────────────────┴──────────────────────┘
+
+  ─ ─ side door (temporary, NOT in tofu):  backstage.34.173.224.22.nip.io
+       → nginx TLS proxy (ns backstage-view, P3) ──▶ 10.10.16.4:7007  [debug view only]
