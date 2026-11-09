@@ -1,0 +1,1454 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Under the covers: container-based Workbench</title><style>
+:root{
+  --bg:#f5f6f8; --card:#ffffff; --text:#1a2130; --muted:#5a6578; --line:#d8dde6; --accent:#2457c5; --accent-soft:#e4ecfb;
+  --code-bg:#f0f2f6; --term-bg:#10151d; --term-text:#d7deea; --term-dim:#7d8aa0; --ok:#1f7a45; --warn:#b3261e; --warn-soft:#fde8e6; --info-soft:#e8f0fe; --sample:#6b3fa0; --sample-soft:#f1eafa;
+  --edge:#6b7587; --flow:#e0701a;
+  --k-ext-f:#eef0f4; --k-ext-s:#8a93a5;
+  --k-cloud-f:#e1effd; --k-cloud-s:#2b74c4;
+  --k-meta-f:#f1e9fb; --k-meta-s:#7a4fa5;
+  --k-vm-f:#ffffff; --k-vm-s:#4a6fa5;
+  --k-svc-f:#eaf1fb; --k-svc-s:#4a6fa5;
+  --k-agent-f:#fdeee0; --k-agent-s:#c46a1a;
+  --k-cont-f:#e5f5ea; --k-cont-s:#2f8a4f;
+  --k-disk-f:#fff6dc; --k-disk-s:#b8921e;
+  --k-warn-f:#fde4e2; --k-warn-s:#c43a3a;
+  --k-sample-f:#f4edfb; --k-sample-s:#8250c4;
+  --k-state-f:#ffffff; --k-state-s:#2457c5;
+  --node-text:#1a2130; --node-sub:#4d586b; --frame:#99a3b5;
+  color-scheme: light;
+}
+:root[data-theme="dark"]{
+  --bg:#0e1218; --card:#161c26; --text:#e6e9f0; --muted:#98a3b8; --line:#2a3342; --accent:#7aa2ff; --accent-soft:#1d2a47;
+  --code-bg:#1d2431; --term-bg:#090c11; --term-text:#d7deea; --term-dim:#7d8aa0; --ok:#5fd08a; --warn:#ff8a80; --warn-soft:#3a1d1b; --info-soft:#1b2740; --sample:#c2a0f0; --sample-soft:#2a2038;
+  --edge:#8793a8; --flow:#ffa24d;
+  --k-ext-f:#212837; --k-ext-s:#7d889c;
+  --k-cloud-f:#142a44; --k-cloud-s:#5aa3f0;
+  --k-meta-f:#2a2038; --k-meta-s:#b58be0;
+  --k-vm-f:#161c26; --k-vm-s:#7aa2ff;
+  --k-svc-f:#1b2740; --k-svc-s:#7aa2ff;
+  --k-agent-f:#3a2615; --k-agent-s:#ff9f55;
+  --k-cont-f:#17301f; --k-cont-s:#5fd08a;
+  --k-disk-f:#352c10; --k-disk-s:#e0b840;
+  --k-warn-f:#3a1d1b; --k-warn-s:#ff7a70;
+  --k-sample-f:#2a2038; --k-sample-s:#c2a0f0;
+  --k-state-f:#161c26; --k-state-s:#7aa2ff;
+  --node-text:#e6e9f0; --node-sub:#a9b3c6; --frame:#4a5568;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1218; --card:#161c26; --text:#e6e9f0; --muted:#98a3b8; --line:#2a3342; --accent:#7aa2ff; --accent-soft:#1d2a47;
+    --code-bg:#1d2431; --term-bg:#090c11; --ok:#5fd08a; --warn:#ff8a80; --warn-soft:#3a1d1b; --info-soft:#1b2740; --sample:#c2a0f0; --sample-soft:#2a2038;
+    --edge:#8793a8; --flow:#ffa24d;
+    --k-ext-f:#212837; --k-ext-s:#7d889c; --k-cloud-f:#142a44; --k-cloud-s:#5aa3f0; --k-meta-f:#2a2038; --k-meta-s:#b58be0;
+    --k-vm-f:#161c26; --k-vm-s:#7aa2ff; --k-svc-f:#1b2740; --k-svc-s:#7aa2ff; --k-agent-f:#3a2615; --k-agent-s:#ff9f55;
+    --k-cont-f:#17301f; --k-cont-s:#5fd08a; --k-disk-f:#352c10; --k-disk-s:#e0b840; --k-warn-f:#3a1d1b; --k-warn-s:#ff7a70;
+    --k-sample-f:#2a2038; --k-sample-s:#c2a0f0; --k-state-f:#161c26; --k-state-s:#7aa2ff;
+    --node-text:#e6e9f0; --node-sub:#a9b3c6; --frame:#4a5568; color-scheme: dark;
+  }
+}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:64px}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--accent)}
+code,pre,kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+code{background:var(--code-bg);padding:.1em .38em;border-radius:5px;font-size:.88em}
+h1,h2,h3{line-height:1.25;margin:0 0 .5em}
+h1{font-size:clamp(1.7rem,3.2vw,2.5rem);letter-spacing:-.01em}
+h2{font-size:1.55rem;margin-top:0}
+h3{font-size:1.12rem;margin-top:1.6em}
+p{margin:.5em 0 1em}
+.wrap{max-width:1240px;margin:0 auto;padding:0 20px}
+section{padding:44px 0;border-top:1px solid var(--line)}
+section:first-of-type{border-top:0}
+.nav{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.nav .wrap{display:flex;align-items:center;gap:6px;height:52px;overflow-x:auto;white-space:nowrap}
+.nav b{margin-right:10px}
+.nav a{text-decoration:none;color:var(--muted);padding:6px 10px;border-radius:8px;font-size:.92rem}
+.nav a:hover{background:var(--accent-soft);color:var(--accent)}
+.nav .sp{flex:1}
+button,select{font:inherit;color:var(--text)}
+.btn{background:var(--card);border:1px solid var(--line);padding:7px 14px;border-radius:9px;cursor:pointer;display:inline-flex;gap:7px;align-items:center}
+.btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover:not(:disabled){color:#fff;filter:brightness(1.08)}
+.lead{font-size:1.1rem;color:var(--muted);max-width:860px}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin:22px 0 0}
+.chip{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;min-width:150px}
+.chip b{display:block;font-size:1.25rem}
+.chip span{color:var(--muted);font-size:.84rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px}
+.tbl{overflow-x:auto;margin:10px 0 22px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{padding:8px 12px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+th{background:var(--code-bg);font-weight:600;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+.tag{display:inline-block;font-size:.72rem;font-weight:600;letter-spacing:.02em;padding:1px 8px;border-radius:99px;border:1px solid var(--line);vertical-align:middle;margin-right:6px;text-transform:uppercase}
+.tag.obs{background:var(--info-soft);color:var(--accent);border-color:transparent}
+.tag.inf{background:#fff4d6;color:#8a6100;border-color:transparent}
+:root[data-theme="dark"] .tag.inf{background:#3a3114;color:#e8c55a}
+.tag.smp{background:var(--sample-soft);color:var(--sample);border-color:transparent}
+.tag.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.callout{border-left:4px solid var(--accent);background:var(--info-soft);padding:10px 14px;border-radius:0 10px 10px 0;margin:12px 0}
+.callout.warn{border-color:var(--warn);background:var(--warn-soft)}
+.callout.smp{border-color:var(--sample);background:var(--sample-soft)}
+.callout p{margin:.2em 0}
+pre{background:var(--term-bg);color:var(--term-text);padding:14px 16px;border-radius:12px;overflow:auto;font-size:.82rem;line-height:1.5;margin:10px 0 18px}
+.pre-wrap{position:relative}
+.copy{position:absolute;top:8px;right:8px;font-size:.75rem;padding:3px 10px}
+.diag{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;overflow:auto;margin:12px 0 6px}
+.diag svg{display:block;margin:0 auto;max-width:100%;height:auto}
+.cap{color:var(--muted);font-size:.88rem;margin:0 0 26px}
+
+/* ---------- demo ---------- */
+.demo-bar{position:sticky;top:52px;z-index:40;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin:12px 0;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.demo-bar .grow{flex:1}
+.demo-bar label{font-size:.85rem;color:var(--muted);display:inline-flex;gap:6px;align-items:center;cursor:pointer}
+.demo-bar select{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+.tabs{display:flex;gap:8px;overflow-x:auto;margin:14px 0 4px;padding-bottom:4px}
+.tab{flex:1 0 148px;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 12px;cursor:pointer;display:flex;flex-direction:column;gap:2px;color:var(--muted);font:inherit}
+.tab b{color:var(--text);font-size:.9rem}.tab span{font-size:.76rem}
+.tab:hover{border-color:var(--accent)}
+.tab.cur{background:var(--accent);border-color:var(--accent);color:#e8f0ff}.tab.cur b{color:#fff}
+.stepno{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.9rem;min-width:84px;text-align:right}
+.dots{display:flex;gap:5px;flex-wrap:wrap;width:100%}
+.dot{width:26px;height:26px;border-radius:8px;border:1px solid var(--line);background:var(--card);font-size:.72rem;cursor:pointer;color:var(--muted);padding:0}
+.dot.done{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.dot.cur{background:var(--accent);color:#fff;border-color:var(--accent)}
+.dot.smp{border-style:dashed;border-color:var(--sample)}
+.stage-wrap{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:8px;overflow:auto}
+#stage{display:block;width:100%;min-width:560px;height:auto}
+.timeline{display:flex;gap:4px;margin:12px 0 0;font-size:.74rem}
+.seg{flex:1 1 0;min-width:0;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:5px 7px;color:var(--muted);transition:all .3s}
+.seg b{display:block;color:var(--text);font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seg.done{background:var(--accent-soft);border-color:transparent}
+.seg.cur{background:var(--accent);color:#e8f0ff;border-color:var(--accent)}
+.seg.cur b{color:#fff}
+.seg.pull{flex-grow:3}
+#demo .wrap{max-width:1600px}
+.demo-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(340px,420px);gap:16px;align-items:start}
+.demo-main{min-width:0}
+.demo-side{position:sticky;top:176px;max-height:calc(100vh - 192px);display:flex;flex-direction:column;gap:12px;min-width:0}
+.demo-side .caption{flex:1 1 56%;min-height:0;overflow:auto;padding:14px 16px}
+.demo-side .caption h3{font-size:1.1rem;margin:.1em 0 .5em}
+.demo-side .caption li{font-size:.9rem;margin:.3em 0}
+.demo-side .term{flex:1 1 44%;min-height:0;max-height:none}
+.demo-side .term pre{overflow:auto;font-size:.76rem}
+.demo-side .caption .callout{font-size:.86rem}
+@media (max-width:1050px){.demo-grid{grid-template-columns:1fr}.demo-side{position:static;max-height:none}.demo-side .caption,.demo-side .term{overflow:visible}}
+.panels{display:grid;grid-template-columns:minmax(300px,5fr) minmax(300px,6fr);gap:16px;margin-top:16px}
+@media (max-width:900px){.panels{grid-template-columns:1fr}}
+.caption{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;min-height:260px}
+.caption .meta{display:flex;gap:8px;align-items:center;margin-bottom:6px;color:var(--muted);font-size:.84rem}
+.pill{border:1px solid var(--line);border-radius:99px;padding:1px 10px;background:var(--code-bg)}
+.caption h3{margin:.1em 0 .6em;font-size:1.25rem}
+.caption ul{margin:.3em 0 .6em;padding-left:1.2em}
+.caption li{margin:.35em 0}
+.caption .callout{font-size:.9rem}
+.term{background:var(--term-bg);color:var(--term-text);border-radius:14px;overflow:hidden;border:1px solid #000;display:flex;flex-direction:column;min-height:260px;max-height:520px}
+.term-h{display:flex;gap:7px;align-items:center;padding:8px 12px;background:#1a212d;color:var(--term-dim);font-size:.78rem}
+.term-h i{width:10px;height:10px;border-radius:50%;display:inline-block;background:#3a4558}
+.term-h span{margin-left:6px}
+.term pre{margin:0;border-radius:0;background:transparent;flex:1;font-size:.8rem;white-space:pre-wrap;word-break:break-word}
+.term .ln{display:block;animation:fadein .35s both}
+.term .c{color:#8fd0ff}.term .d{color:var(--term-dim)}.term .g{color:#7fe3a0}.term .r{color:#ff8f86}
+@keyframes fadein{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+.bar{height:8px;background:var(--code-bg);border-radius:99px;overflow:hidden;margin:6px 0 4px}
+.bar i{display:block;height:100%;width:0;background:var(--flow);border-radius:99px}
+.bar.run i{animation:fill 5s linear forwards}
+@keyframes fill{to{width:100%}}
+
+/* svg stage */
+#stage .node,#stage .edge,#stage .lbl,#stage .frame{opacity:0;transition:opacity .55s ease;pointer-events:none}
+#stage .on{opacity:1}
+#stage.hasfocus .node.on:not(.focus){opacity:.5}
+#stage .node rect{stroke-width:1.6;rx:10}
+#stage .node .t{fill:var(--node-text);font:600 12.5px system-ui,sans-serif}
+#stage .node .s{fill:var(--node-sub);font:10px system-ui,sans-serif}
+#stage .node.focus rect{stroke:var(--accent)!important;stroke-width:3.2;animation:glow 1.4s ease-in-out infinite}
+@keyframes glow{50%{filter:drop-shadow(0 0 7px var(--accent))}}
+.k-ext rect{fill:var(--k-ext-f);stroke:var(--k-ext-s)}
+.k-cloud rect{fill:var(--k-cloud-f);stroke:var(--k-cloud-s)}
+.k-meta rect{fill:var(--k-meta-f);stroke:var(--k-meta-s)}
+.k-vm rect{fill:var(--k-vm-f);stroke:var(--k-vm-s)}
+.k-host rect{fill:var(--k-ext-f);stroke:var(--frame)}
+.k-svc rect{fill:var(--k-svc-f);stroke:var(--k-svc-s)}
+.k-agent rect{fill:var(--k-agent-f);stroke:var(--k-agent-s)}
+.k-cont rect{fill:var(--k-cont-f);stroke:var(--k-cont-s)}
+.k-disk rect{fill:var(--k-disk-f);stroke:var(--k-disk-s)}
+.k-warn rect{fill:var(--k-warn-f);stroke:var(--k-warn-s)}
+.k-sample rect{fill:var(--k-sample-f);stroke:var(--k-sample-s);stroke-dasharray:6 4}
+.k-state rect{fill:var(--k-state-f);stroke:var(--k-state-s)}
+#stage .frame rect{fill:none;stroke:var(--frame);stroke-width:1.4;stroke-dasharray:3 5;rx:16}
+#stage .frame text,#stage .lbl text{fill:var(--muted);font:600 11px system-ui,sans-serif}
+#stage .edge .line{fill:none;stroke:var(--edge);stroke-width:1.6;stroke-linejoin:round}
+#stage marker .arrow{fill:var(--edge)}
+#stage .edge text{fill:var(--muted);font:10px system-ui,sans-serif;paint-order:stroke;stroke:var(--card);stroke-width:4px;stroke-linejoin:round}
+#stage .edge.sample .line{stroke:var(--k-sample-s);stroke-dasharray:5 4}
+#stage .edge.flow .line{stroke:var(--flow);stroke-width:2.6;stroke-dasharray:7 6;animation:dash .7s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-13}}
+@media (prefers-reduced-motion: reduce){#stage .edge.flow .line,#stage .node.focus rect,.term .ln{animation:none}}
+footer{padding:36px 0 60px;color:var(--muted);font-size:.86rem;border-top:1px solid var(--line)}
+.kbd{display:inline-block;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;padding:0 6px;font-size:.78rem;background:var(--card)}
+</style><style>.nav,.hero{display:none}body{margin:0}section{border:0!important;padding-top:8px!important}</style></head><body><main><section id="demo"><div class="wrap">
+  <h2>Demo: what happens under the covers, from a clean slate</h2>
+  <p>Five scenes tell one story: <b>build the VM</b> (Notebooks API → Compute API), <b>where the images come from</b>, <b>boot</b>, <b>metadata</b>, and <b>disks</b>. Press <b>Play</b> to run the whole tour, step with <b>Next</b> and <b>Back</b> (they cross scene boundaries), or jump with the tabs. <b>Reset</b> returns to the empty slate. Keyboard: <span class="kbd">Space</span> play/pause, <span class="kbd">←</span> <span class="kbd">→</span> back/next, <span class="kbd">Home</span> reset. Every step replays exactly, so Back really rewinds.</p>
+
+  <div class="tabs" id="tabs" role="tablist" aria-label="Scenes"></div>
+  <div class="demo-bar" id="controls">
+    <button class="btn" id="b-reset" type="button" title="Reset to clean slate">⟲ Reset</button>
+    <button class="btn" id="b-back" type="button" title="Previous step">◀ Back</button>
+    <button class="btn primary" id="b-play" type="button" title="Play / pause">▶ Play</button>
+    <button class="btn" id="b-next" type="button" title="Next step">Next ▶</button>
+    <label>Speed
+      <select id="speed"><option value="7000">Slow</option><option value="4800" selected>Normal</option><option value="2800">Fast</option></select>
+    </label>
+    <label id="sample-wrap" title="Boot scene only: adds a step that runs an illustrative post-startup script (gcsfuse + rsync)"><input type="checkbox" id="sample" checked> Include sample post-startup script</label>
+    <span class="grow"></span>
+    <span class="stepno" id="stepno">Step 0 / 0</span>
+    <div class="dots" id="dots" role="tablist" aria-label="Steps"></div>
+  </div>
+
+  <div class="demo-grid"><div class="demo-main"><div class="stage-wrap"><svg id="stage" viewBox="0 0 1300 722" role="img" aria-label="Animated architecture diagram of the Workbench VM boot"></svg></div>
+  <div class="timeline" id="timeline" aria-hidden="true"></div>
+  <p class="cap" id="timeline-note">Timeline is illustrative and not to scale. Real durations vary; the image pull is usually the longest step.</p>
+
+  </div><div class="demo-side" id="side">
+    <article class="caption" id="caption" aria-live="polite"></article>
+    <aside class="term"><div class="term-h"><i></i><i></i><i></i><span id="term-title">evidence</span></div><pre id="term"></pre></aside>
+  </div></div>
+</div></section></main><button id="theme" hidden></button><script type="text/plain" id="ev-s0">
+$ gcloud workbench instances create my-instance \
+    --project my-project --location ZONE \
+    --container-repository=REGION-docker.pkg.dev/PROJECT/REPO/YOUR_IMAGE \
+    --container-tag=latest --metadata=idle-timeout-seconds=3600
+
+# before: no VM, no disks, no containers
+# after (roughly ten minutes later): an ACTIVE instance and a JupyterLab URL
+</script><script type="text/plain" id="ev-s1">
+$ gcloud compute disks describe my-instance-boot
+sourceImage: projects/cloud-notebooks-managed/global/images/
+             workbench-container-host-BUILD_TAG
+licenses:    cos-cloud/.../licenses/cos
+             click-to-deploy-images/.../c2d-dl-platform-workbench-instances-custom-container-host
+sizeGb: (your choice)   # plus a data disk my-instance-data-workspace
+
+# instance metadata written by the API (excerpt)
+custom-container-payload: REGION-docker.pkg.dev/PROJECT/REPO/YOUR_IMAGE:latest
+notebooks-api-version:    v2
+proxy-backend-id:         BACKEND_ID
+idle-timeout-seconds:     3600
+user-data:                #include file:///mnt/stateful_partition/workbench/cloud-config.yaml
+</script><script type="text/plain" id="ev-s2">
+$ systemd-analyze
+Startup finished in a few seconds (kernel) + several minutes (userspace)
+
+$ grep PRETTY /etc/os-release
+PRETTY_NAME="Container-Optimized OS from Google"
+$ uname -r
+6.x.y+
+$ lsblk
+sda3 -> vroot  ~2G  dm  /                  # read-only, dm-verity
+sda1  (most of the disk)  /mnt/stateful_partition  (also /var)
+</script><script type="text/plain" id="ev-s3">
+# user-data -> /mnt/stateful_partition/workbench/cloud-config.yaml
+users:
+  - jupyter        (uid 2000)
+  - executoragent  (uid 2001, group docker)
+write_files:
+  /etc/systemd/system/workbench-configure.service
+  /etc/systemd/system/jupyter-payload.service
+  /etc/systemd/system/workbench-proxy-agent.service   ... about 20 units
+  /mnt/stateful_partition/workbench/*.sh
+runcmd:
+  - /etc/systemd/system/startup.sh
+
+$ systemd-analyze critical-chain          # typical shape
+cloud-init.service   @ ~15-20 s
+cloud-final.service  @ ~20 s  + several minutes   <- runs startup.sh
+</script><script type="text/plain" id="ev-s4">
+# /etc/systemd/system/startup.sh  (run by cloud-final, in this order)
+systemctl start log-systemd-services.service
+systemctl start workbench-configure riptide-init disable-ssh-access \
+                disable-gce-startup-scripts workbench-mount-disk
+systemctl start gcfsd snapshotter ; systemctl restart containerd
+systemctl start pull-custom-container-payload.service
+systemctl start workbench-euc-metadata.service
+systemctl start jupyter-payload.service
+systemctl start workbench-euc-agent.service maybe-initialize-executor.service
+systemctl start workbench-proxy-agent workbench-idle-shutdown-agent \
+                workbench-health-agent workbench-diagnostic-service
+systemctl start opencode.service            # optional extras, depends on the image
+systemctl start euc-initialization.service
+systemctl start run-post-startup.service
+systemctl start workbench-cleanup.service
+</script><script type="text/plain" id="ev-s5">
+# workbench-configure.service
+docker run --rm --name=workbench-configure \
+  -v /etc/:/etc/ -v /mnt/stateful_partition/workbench:/mnt/stateful_partition/workbench \
+  --mount type=bind,source=/etc/systemd/system,target=/mnt/systemd \
+  --mount type=bind,source=/tmp,target=/tmp \
+  vertex/workbench-instances-agent:local ./service_generator_agent
+
+$ cat /tmp/ENV_INFO     (typical excerpt, values are placeholders)
+WORKBENCH_CUSTOM_CONTAINER_PAYLOAD=REGION-docker.pkg.dev/PROJECT/REPO/YOUR_IMAGE:latest
+PROJECT_ID=my-project            INSTANCE_REGION=REGION
+BACKEND_ID=BACKEND_ID            PAYLOAD_CONTAINER_ADDRESS=127.0.0.1:8080
+CONTAINER_USER=0:0               JUPYTER_USER=jupyter
+ALLOW_FUSE_FLAG=--device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor:unconfined
+DOCKER_RUN_CUSTOM_PARAMS=        ENV_FILE_FLAG=            # empty unless you set the keys
+RUN_POST_STARTUP_SCRIPT=False
+</script><script type="text/plain" id="ev-s6">
+# mount-disk.sh (excerpt)
+mount_data_disk                    # /dev/disk/by-id/google-data-workspace -> /home/jupyter
+sudo mount -o remount,exec "/home/${JUPYTER_USER}"
+# if the owner is not CONTAINER_USER (0:0):
+sudo chown -R "${CONTAINER_USER}" "/home/${JUPYTER_USER}"
+
+$ findmnt /home/jupyter
+TARGET         SOURCE    FSTYPE  OPTIONS
+/home/jupyter  /dev/sdb  ext4    rw,relatime,discard
+</script><script type="text/plain" id="ev-s7">
+# /etc/containerd/config.toml (excerpt)
+[plugins.'io.containerd.cri.v1.images']
+  snapshotter = "gcfs"
+  discard_unpacked_layers = true
+[proxy_plugins.gcfs]
+  type = "snapshot"
+  address = "/run/containerd-gcfs-grpc/containerd-gcfs-grpc.sock"
+
+$ findmnt /run/gcfsd/mnt
+TARGET          SOURCE  FSTYPE
+/run/gcfsd/mnt  gcfsd   fuse.gcfsd
+
+$ systemctl is-active gcfsd snapshotter riptide-init
+active
+active
+active
+</script><script type="text/plain" id="ev-s8">
+Starting pull-custom-container-payload.service...
+Authenticating with Artifact Registry
+docker run vertex/gcloud:local gcloud auth list
+...
+crictl pull --creds oauth2accesstoken:<token> \
+  REGION-docker.pkg.dev/PROJECT/REPO/YOUR_IMAGE:latest
+
+# first boot only: /home/jupyter is empty, so copy the image's /home onto the data disk
+nerdctl --snapshotter=gcfs -n k8s.io create --net none <image>
+cp -p -r "<image home>/." /home/jupyter
+
+jupyter-payload.service starts          # typically several minutes after the pull began
+</script><script type="text/plain" id="ev-s9">
+/var/lib/google/nerdctl/nerdctl --snapshotter=gcfs -n k8s.io run --name payload-container \
+  -p 127.0.0.1:8080:8080/tcp --env=NUM_GPUS=0 --env=EUC_ENABLED=False \
+  --device /dev/fuse --cap-add SYS_ADMIN --security-opt apparmor:unconfined \
+  --user 0:0 -e VERTEX_PRODUCT=WORKBENCH_CUSTOM_CONTAINER \
+  -e GOOGLE_CLOUD_PROJECT=my-project -e GOOGLE_CLOUD_REGION=REGION \
+  -w /home/jupyter -v /home/jupyter:/home/jupyter  <YOUR_IMAGE:latest>
+
+$ ps --forest
+containerd-shim-runc-v2 -namespace k8s.io -id <container id>...
+  /bin/bash /run_jupyter.sh                          # PID 1 in the container
+    jupyter-lab --allow-root --ip 0.0.0.0 ...        # listens on 0.0.0.0:8080
+$ nerdctl -n k8s.io ps
+payload-container   127.0.0.1:8080->8080/tcp          # container IP on the nerdctl0 bridge
+</script><script type="text/plain" id="ev-s10">
+docker run --name=proxy-agent --restart always --net host \
+  --env BACKEND=BACKEND_ID \
+  --env PROXY=$PROXY_REGISTRATION_URL/ \
+  --env HOSTNAME=127.0.0.1 --env PORT=8080 \
+  --env PROXY_TIMEOUT=60s --env REQUEST_FORWARDING_TIMEOUT=1h \
+  vertex/inverting-proxy-agent:local
+
+proxy-agent log:
+Request forwarding timeout is 1h0m0s; proxy timeout is 1m0s
+
+$ iptables -t nat -S | grep CNI-HOSTPORT-DNAT
+# 127.0.0.1:8080 on the host -> <container IP>:8080 in the container
+</script><script type="text/plain" id="ev-s11">
+idle-shutdown-agent  ./idle_shutdown_agent --jupyter_address=127.0.0.1:8080
+health-agent         ./notebooks_collection_agent --jupyter_address=127.0.0.1:8080 \
+                       --docker_container_check_list=idle-shutdown-agent,diagnostic-service,proxy-agent
+diagnostic-service   --privileged --pid host   ./diagnostic_tool --poll
+
+health-agent log:
+Reporting url: https://notebooks.googleapis.com/v2/projects/my-project/locations/
+  ZONE/instances/my-instance:reportInfoSystem, with event type: HEALTH
+Response: <Response [200]>                 # about every 30 s
+</script><script type="text/plain" id="ev-s12">
+# what to check on the host
+$ sudo ss -ltnp
+0.0.0.0:22     sshd
+127.0.0.1:8080 jupyter (via port-forward)
+0.0.0.0:<high port>   <optional extra service>     # review: does it need auth?
+
+# an extra service may log something like:
+!  <SERVICE>_PASSWORD is not set; server is unsecured.
+
+# to stop one until the next reboot:
+$ sudo systemctl stop <unit>
+</script><script type="text/plain" id="ev-s13">
+# /mnt/stateful_partition/workbench/run_post_startup_script.sh
+if [[ "${RUN_POST_STARTUP_SCRIPT}" == "True" ]]; then
+  chmod +x "${POST_STARTUP_SCRIPT_PATH}"
+  /bin/bash -c "${POST_STARTUP_SCRIPT_PATH}"
+fi
+
+# with no script set:  RUN_POST_STARTUP_SCRIPT=False  ->  nothing runs
+
+# workbench-cleanup (runs right after)
+docker volume prune -af
+nerdctl -n k8s.io volume prune -af
+nerdctl -n k8s.io images prune -a
+</script><script type="text/plain" id="ev-s14">
+$ systemd-analyze
+multi-user.target reached after several minutes in userspace.
+
+health-agent -> Notebooks API:  Response: <Response [200]>
+
+Instance state:   PROVISIONING -> ACTIVE        # roughly ten minutes after create
+</script><script type="text/plain" id="ev-s15">
+https://BACKEND_ID-dot-REGION.notebooks.googleusercontent.com
+
+proxy-agent log:
+Websocket connection to the server "ws://127.0.0.1:8080/api/events/subscribe"
+  established for session: 1
+
+$ curl -s http://127.0.0.1:8080/api
+{"version": "2.x.y"}                       # Jupyter Server, via host loopback
+
+# from inside payload-container:
+$ curl -s -H 'Metadata-Flavor: Google' \
+    http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email
+PROJECT_NUMBER-compute@developer.gserviceaccount.com
+</script><script type="text/plain" id="ev-s16">
+$ gcloud compute operations list --filter='targetLink~my-instance'
+TIME  stop  my-instance  service-PROJECT_NUMBER@gcp-sa-notebooks.iam.gserviceaccount.com  DONE
+# the principal is the Notebooks service agent, not a user
+
+$ gcloud compute instances describe my-instance --format='value(status,lastStopTimestamp)'
+TERMINATED   <timestamp>        # typically about idle-timeout-seconds after the last activity
+
+# on stop, jupyter-payload ExecStopPost runs:
+/mnt/stateful_partition/workbench/shutdown_script.sh   ->  clean_up_gfuse_mounts
+</script><script type="text/plain" id="ev-a0">
+$ gcloud workbench instances list --project my-project --location ZONE
+Listed 0 items.
+
+# no instance, and no disks named my-instance-*, exist yet
+</script><script type="text/plain" id="ev-a1">
+$ gcloud workbench instances create my-instance \
+    --project my-project --location ZONE \
+    --container-repository=REGION-docker.pkg.dev/PROJECT/REPO/YOUR_IMAGE \
+    --container-tag=latest --metadata=idle-timeout-seconds=3600
+
+# gcloud turns that into (illustrative, simplified):
+POST https://notebooks.googleapis.com/v2/projects/my-project/locations/ZONE/instances?instanceId=my-instance
+{ "gceSetup": { "containerImage": { "repository": "REGION-docker.pkg.dev/PROJECT/REPO/YOUR_IMAGE",
+                                    "tag": "latest" },
+                "metadata": { "idle-timeout-seconds": "3600" } } }
+</script><script type="text/plain" id="ev-a2">
+Waiting for operation on Instance [my-instance] to be created with
+[projects/my-project/locations/ZONE/operations/operation-...]...
+.........done.
+Created workbench instance my-instance
+
+# defaults the API fills in (visible later in `gcloud workbench instances describe`):
+machineType: a standard type     bootDisk: PD_STANDARD     dataDisks: PD_STANDARD
+network: default   subnet: default   serviceAccount: PROJECT_NUMBER-compute@developer.gserviceaccount.com
+tags: deeplearning-vm, notebook-instance      metadata: about two dozen keys
+</script><script type="text/plain" id="ev-a3">
+$ gcloud compute operations list --filter='targetLink~my-instance'
+TYPE: insert   TARGET: my-instance
+USER: service-PROJECT_NUMBER@gcp-sa-notebooks.iam.gserviceaccount.com
+STATUS: DONE
+
+# the caller is the Notebooks service agent of your project, not a person
+</script><script type="text/plain" id="ev-a4">
+$ gcloud compute instances describe my-instance
+creationTimestamp: <t>
+my-instance-boot            created <t>+ms    sourceImage .../cloud-notebooks-managed/.../workbench-container-host-BUILD_TAG
+my-instance-data-workspace  created <t>+ms    blank
+nic0: network default, subnetwork default, networkIP 10.x.x.x, ONE_TO_ONE_NAT (PREMIUM)
+serviceAccounts: PROJECT_NUMBER-compute@developer.gserviceaccount.com  [cloud-platform, userinfo.email]
+shieldedInstanceConfig: enableVtpm true, enableIntegrityMonitoring true
+labels: notebooks-product=workbench-instances  resource-name=my-instance  consumer-project-id=my-project
+</script><script type="text/plain" id="ev-a5">
+$ gcloud compute operations list --filter='targetLink~my-instance' --sort-by=insertTime
+TYPE         TARGET       USER (principal)
+insert       my-instance  service-PROJECT_NUMBER@gcp-sa-notebooks.iam.gserviceaccount.com   DONE
+setMetadata  my-instance  service-PROJECT_NUMBER@gcp-sa-notebooks.iam.gserviceaccount.com   DONE
+stop         my-instance  service-PROJECT_NUMBER@gcp-sa-notebooks.iam.gserviceaccount.com   DONE   # e.g. idle stop
+</script><script type="text/plain" id="ev-a6">
+# shortly after the VM starts, a setMetadata call by the service agent usually appears
+
+# metadata keys present afterwards include:
+proxy-url  proxy-backend-id  proxy-registration-url  proxy-mode  report-event-url
+# the operation record does not say which keys the call changed
+</script><script type="text/plain" id="ev-a7">
+stop  my-instance  service-PROJECT_NUMBER@gcp-sa-notebooks.iam.gserviceaccount.com  DONE
+
+$ gcloud compute instances describe my-instance --format='value(status,lastStopTimestamp)'
+TERMINATED   <timestamp>
+
+# idle-timeout-seconds (default 10800, i.e. 3 hours) controls when this fires
+</script><script type="text/plain" id="ev-a8">
+$ gcloud compute instances describe my-instance --format='table(disks[].deviceName,disks[].boot,disks[].autoDelete)'
+DEVICE_NAME: boot, data-workspace
+BOOT: True, False
+AUTO_DELETE: True, True          # <- both disks go when the instance goes
+
+$ gcloud compute disks describe my-instance-data-workspace --format='value(status,users)'
+READY   my-instance              # a stopped VM keeps its disks
+</script><script type="text/plain" id="ev-b0">
+# everything on the VM arrives by one of two routes:
+#   1. baked into the boot image (Google builds it)
+#   2. container images: mostly baked as well, one pulled at boot
+</script><script type="text/plain" id="ev-b1">
+$ gcloud compute disks describe my-instance-boot --format='value(licenses)'
+.../projects/cos-cloud/global/licenses/cos
+.../projects/click-to-deploy-images/global/licenses/c2d-dl-platform-workbench-instances-custom-container-host
+
+$ cat /etc/os-release
+PRETTY_NAME="Container-Optimized OS from Google"
+$ uname -r
+6.x.y+
+</script><script type="text/plain" id="ev-b2">
+$ gcloud compute images describe workbench-container-host-BUILD_TAG --project cloud-notebooks-managed
+ERROR: Required 'compute.images.get' permission for
+  'projects/cloud-notebooks-managed/global/images/workbench-container-host-BUILD_TAG'
+
+# so the image's family, description and build pipeline are not visible to you
+version (instance metadata): BUILD_TAG         # same tag as the baked agent images
+</script><script type="text/plain" id="ev-b3">
+$ gcloud compute disks describe my-instance-boot
+sourceImage:   .../cloud-notebooks-managed/global/images/workbench-container-host-BUILD_TAG
+sourceImageId: '<numeric id>'
+type: pd-standard
+guestOsFeatures: UEFI_COMPATIBLE, VIRTIO_SCSI_MULTIQUEUE, GVNIC, SECURE_BOOT (capable), ...
+# cos-update-strategy = update_disabled (instance metadata): the host stays on this image
+</script><script type="text/plain" id="ev-b4">
+$ ls -la /mnt/stateful_partition/workbench
+cloud-config.yaml                  <- baked (image build date)
+configure.sh                       <- baked
+utils.sh                           <- baked
+jupyter_notebook_config.py         <- baked
+mount-disk.sh                      <- written at boot (boot date)
+pull-custom-container-payload.sh   <- written at boot
+run_post_startup_script.sh         <- written at boot
+</script><script type="text/plain" id="ev-b5">
+$ docker images --format '{{.Repository}}:{{.Tag}}'
+vertex/workbench-instances-agent:local     (+ vertex/colab-enterprise-agent:local)
+vertex/gcloud:local
+vertex/inverting-proxy-agent:local
+vertex/executor-agent:local
+vertex/opencode:local                      # optional extras, depends on the image
+us.gcr.io/cos-cloud/cos-gpu-installer:<version>
+gcr.io/cloud-builders/metadata:latest
+
+# the first units run these images before any pull happens
+# registry tags match the host image build, e.g. .../workbench-agent:BUILD_TAG
+</script><script type="text/plain" id="ev-b6">
+Starting pull-custom-container-payload.service...
+crictl pull --creds oauth2accesstoken:<token> \
+  REGION-docker.pkg.dev/PROJECT/REPO/YOUR_IMAGE:latest
+jupyter-payload.service starts            # typically minutes later
+
+$ nerdctl -n k8s.io ps
+payload-container  REGION-docker.pkg.dev/PROJECT/REPO/YOUR_IMAGE:latest
+
+# documented: with the :latest tag the instance pulls a new image on every restart
+</script><script type="text/plain" id="ev-b7">
+baked        COS, docker/containerd/runc/nerdctl/crictl, gcfsd, cloud-config.yaml, the agent images
+written      ~20 systemd units + helper scripts (cloud-init, from the baked cloud-config), at every boot
+pulled       your Jupyter image only (crictl + gcfs, containerd namespace k8s.io)
+
+versions:    baked parts move together (one build tag); the pulled image floats with :latest
+</script><script type="text/plain" id="ev-d0">
+$ curl -s -H 'Metadata-Flavor: Google' \
+    http://metadata.google.internal/computeMetadata/v1/instance/attributes/
+cos-update-strategy
+custom-container-image
+custom-container-payload
+disable-swap-binaries
+enable-guest-attributes
+enable-oslogin
+google-logging-enabled
+idle-timeout-seconds ...                     # about two dozen keys in all
+</script><script type="text/plain" id="ev-d1">
+$ curl -s -H 'Metadata-Flavor: Google' \
+    http://metadata.google.internal/computeMetadata/v1/instance/attributes/idle-timeout-seconds
+3600
+
+# written by the Notebooks service agent at insert, and by later setMetadata calls
+# (the one key you supplied yourself: idle-timeout-seconds)
+</script><script type="text/plain" id="ev-d2">
+Identity        notebooks-api=PROD  notebooks-api-version=v2  version=BUILD_TAG
+                resource-url=.../instances/my-instance  instance-region=REGION
+Container       custom-container-payload=REGION-docker.pkg.dev/PROJECT/REPO/YOUR_IMAGE:latest
+                custom-container-image=true  cos-update-strategy=update_disabled
+Proxy/ingress   proxy-backend-id=BACKEND_ID  proxy-url=BACKEND_ID...notebooks.googleusercontent.com
+                proxy-registration-url=https://REGION.notebooks.cloud.google.com/tun/m/<redacted>
+                proxy-mode=service_account  new-proxy-agent-enabled=true  service-account-mode=true
+Lifecycle       idle-timeout-seconds=3600  shutdown-script=<path>
+Access/logging  enable-oslogin=TRUE  enable-guest-attributes=TRUE  google-logging-enabled=true  serial-port-logging-enable=true
+Feature flags   enable-jupyterlab4=true  enable-antigravity=true  disable-swap-binaries=true
+Reporting       report-event-url=.../instances/my-instance:reportInfoSystem
+user-data       #include file:///mnt/stateful_partition/workbench/cloud-config.yaml
+</script><script type="text/plain" id="ev-d3">
+user-data = #include file:///mnt/stateful_partition/workbench/cloud-config.yaml
+
+$ systemd-analyze critical-chain         # typical shape
+cloud-init.service   @ ~15-20 s
+cloud-final.service  @ ~20 s + several minutes     # runcmd: /etc/systemd/system/startup.sh
+
+users: jupyter (uid 2000), executoragent (uid 2001)   write_files: ~20 units + scripts
+</script><script type="text/plain" id="ev-d4">
+# instance metadata                        ->  /tmp/ENV_INFO   (matched by name and value)
+custom-container-payload = REGION-docker.pkg.dev/PROJECT/REPO/YOUR_IMAGE:latest
+                                           ->  WORKBENCH_CUSTOM_CONTAINER_PAYLOAD=<same value>
+instance-region = REGION                   ->  INSTANCE_REGION=REGION
+proxy-backend-id = BACKEND_ID              ->  BACKEND_ID=BACKEND_ID
+proxy-registration-url = https://...       ->  PROXY_REGISTRATION_URL=<same value>
+(unset)                                    ->  DOCKER_RUN_CUSTOM_PARAMS=  ENV_FILE_FLAG=  POST_STARTUP_SCRIPT_PATH=
+# the agent that does the mapping (service_generator_agent) is not publicly documented
+</script><script type="text/plain" id="ev-d5">
+# jupyter-payload.service (excerpt)
+EnvironmentFile=/tmp/ENV_INFO
+ExecStart=/var/lib/google/nerdctl/nerdctl --snapshotter=gcfs -n k8s.io run --name payload-container \
+  -p 127.0.0.1:8080:8080/tcp $RUNTIME_FLAG $GCE_METADATA_FLAG $DOCKER_RUN_CUSTOM_PARAMS $ENV_FILE_FLAG \
+  $ALLOW_FUSE_FLAG --user $CONTAINER_USER ... \
+  -e "GOOGLE_CLOUD_PROJECT=${PROJECT_ID}" -e "GOOGLE_CLOUD_REGION=${INSTANCE_REGION}" \
+  "${WORKBENCH_CUSTOM_CONTAINER_PAYLOAD}"
+
+# from inside payload-container, the metadata server also answers directly:
+$ curl -s -H 'Metadata-Flavor: Google' http://metadata.google.internal/.../attributes/idle-timeout-seconds
+HTTP 200
+</script><script type="text/plain" id="ev-d6">
+# proxy-agent (docker run, --net host)
+--env BACKEND=BACKEND_ID   --env PROXY=$PROXY_REGISTRATION_URL/   --env HOSTNAME=127.0.0.1   --env PORT=8080
+
+# an optional extra may read the key directly from the metadata server:
+BACKEND_ID=$(curl -s -H 'Metadata-Flavor: Google' \
+  http://metadata.google.internal/computeMetadata/v1/instance/attributes/proxy-backend-id)
+# e.g. to build a CORS origin:  https://${BACKEND_ID}.notebooks.googleusercontent.com
+</script><script type="text/plain" id="ev-d7">
+health-agent log:
+Reporting url: https://notebooks.googleapis.com/v2/projects/my-project/locations/ZONE/
+  instances/my-instance:reportInfoSystem        # = the report-event-url value
+Response: <Response [200]>
+
+$ id        uid=NNNNNNNNNN(user_example_com)               # enable-oslogin=TRUE
+$ ls <shutdown-script path>
+ls: cannot access ...: No such file or directory           # may not exist on a COS host
+$ free -h   Swap: 0B                                       # disable-swap-binaries=true
+</script><script type="text/plain" id="ev-d8">
+$ curl -s -H 'Metadata-Flavor: Google' \
+    'http://metadata.google.internal/computeMetadata/v1/instance/guest-attributes/?recursive=true'
+guest-agent/
+hostkeys/
+notebooks/
+workbench-notebooks/
+
+# enable-guest-attributes=TRUE; documented: idle shutdown requires it
+</script><script type="text/plain" id="ev-d9">
+$ gcloud workbench instances update my-instance --project my-project --location ZONE \
+    --metadata=container-env-file=FOO=bar,post-startup-script=gs://BUCKET/x.sh,post-startup-script-behavior=run_every_start
+# Compute then records another setMetadata by the service agent
+
+# documented: a new idle-timeout-seconds applies to a running instance without a restart
+# inferred:   container-* and post-startup keys are picked up when workbench-configure next runs, at boot
+</script><script type="text/plain" id="ev-e0">
+$ lsblk -o NAME,SIZE,TYPE,MOUNTPOINT
+sda   (boot size) disk
+sdb   (data size) disk /home/jupyter
+</script><script type="text/plain" id="ev-e1">
+$ gcloud compute instances describe my-instance --format='table(disks[].deviceName,disks[].interface,disks[].mode,disks[].autoDelete)'
+DEVICE_NAME: boot, data-workspace   INTERFACE: SCSI, SCSI   MODE: READ_WRITE, READ_WRITE
+AUTO_DELETE: True, True
+</script><script type="text/plain" id="ev-e2">
+$ lsblk -o NAME,SIZE,TYPE,MOUNTPOINT
+sda        (boot size) disk
+|-sda1     (most)      part /mnt/stateful_partition
+|-sda2      32M part
+|-sda3       2G part
+| `-vroot  ~2G  dm   /
+|-sda4      32M part
+|-sda5       2G part
+|-sda6/7   512B part
+|-sda8      16M part /usr/share/oem
+|-sda9/10  512B part
+|-sda11      8M part
+`-sda12     64M part
+$ cat /proc/cmdline
+BOOT_IMAGE=/syslinux/vmlinuz.A init=/usr/lib/systemd/systemd rootwait ro ...
+</script><script type="text/plain" id="ev-e3">
+$ df -h /
+/dev/root       2.0G  ...   ...  mostly full /
+$ lsblk
+`-vroot ~2G dm /                       # device-mapper verity target, mounted read-only
+$ findmnt /usr/share/oem               # from sda8
+</script><script type="text/plain" id="ev-e4">
+$ df -h /var
+/dev/sda1       (most of the boot disk)  /var
+$ lsblk | grep stateful
+sda1  part /mnt/stateful_partition
+
+# what lives there:
+/mnt/stateful_partition/workbench/        cloud-config.yaml, scripts
+/var/lib/docker, /var/lib/containerd      images, snapshots, gcfs layer cache
+</script><script type="text/plain" id="ev-e5">
+# mount-disk.sh
+mount_data_disk            # /dev/disk/by-id/google-data-workspace -> /home/jupyter
+sudo mount -o remount,exec "/home/${JUPYTER_USER}"
+sudo chown -R "${CONTAINER_USER}" "/home/${JUPYTER_USER}"      # if the owner differs (0:0)
+
+$ findmnt /home/jupyter
+/home/jupyter  /dev/sdb  ext4  rw,relatime,discard
+$ df -h /home/jupyter
+/dev/sdb        (data size)  ~empty on first boot
+</script><script type="text/plain" id="ev-e6">
+$ nerdctl -n k8s.io exec payload-container sh -c 'df -h /home/jupyter /'
+/dev/sdb        <data disk>   /home/jupyter
+overlay         <boot disk>   /
+$ docker inspect <extra container> --format '{{json .HostConfig.Binds}}'
+["/home/jupyter:/home/jupyter"]
+</script><script type="text/plain" id="ev-e7">
+survives stop/start   /home/jupyter (sdb), stateful partition (images, scripts, gcfs cache)
+recreated each start  container writable layers, /tmp/ENV_INFO, units written by cloud-init
+deleted with VM       both disks (autoDelete: true)  <- including /home/jupyter
+while stopped         disks READY, still billed; compute billing stops
+</script><script type="text/plain" id="ev-f0">
+$ gcloud compute networks describe default
+name: default      autoCreateSubnetworks: true      routingMode: REGIONAL
+</script><script type="text/plain" id="ev-f1">
+$ gcloud compute networks subnets describe default --region REGION
+ipCidrRange: 10.x.0.0/20   gatewayAddress: 10.x.0.1   privateIpGoogleAccess: true   stackType: IPV4_ONLY
+$ gcloud compute routes list
+default-route-...  0.0.0.0/0  default-internet-gateway  priority 1000
+$ gcloud compute routers list
+(none, unless you created Cloud NAT)
+</script><script type="text/plain" id="ev-f2">
+$ gcloud compute instances describe my-instance --format='yaml(networkInterfaces)'
+nic0: network default, subnetwork default, networkIP 10.x.x.x, stackType IPV4_ONLY
+accessConfigs: external-nat, type ONE_TO_ONE_NAT, networkTier PREMIUM      # natIP only while running
+$ ip -br addr
+eth0     UP    10.x.x.x/32
+docker0  DOWN  172.17.0.1/16
+nerdctl0 UP    10.4.0.1/24
+</script><script type="text/plain" id="ev-f3">
+$ gcloud compute firewall-rules list     # a default network, ingress
+default-allow-ssh        tcp:22                 0.0.0.0/0
+default-allow-rdp        tcp:3389               0.0.0.0/0
+default-allow-icmp       icmp                   0.0.0.0/0
+default-allow-internal   tcp/udp/icmp all       10.128.0.0/9
+(+ any rules your project has added)
+
+$ ss -ltnp          # what actually listens
+0.0.0.0:22 sshd    127.0.0.1:8080 (Jupyter, via port-forward)    # plus any optional extras
+</script><script type="text/plain" id="ev-f4">
+$ ip -br addr
+lo        127.0.0.1/8
+eth0      10.x.x.x/32
+docker0   172.17.0.1/16   DOWN
+nerdctl0  10.4.0.1/24     UP     (veth to the container)
+
+$ readlink /proc/<jupyter pid>/ns/net  vs  /proc/1/ns/net     # different: its own network namespace
+payload-container: eth0 10.4.0.x/24
+
+# agents: docker run --net host ...    (share eth0 and lo)
+</script><script type="text/plain" id="ev-f5">
+https://BACKEND_ID-dot-REGION.notebooks.googleusercontent.com    # 1
+
+proxy-agent log:                                                  # 2, 3
+Request forwarding timeout is 1h0m0s; proxy timeout is 1m0s
+Websocket connection to the server "ws://127.0.0.1:8080/api/events/subscribe" established for session: 1
+
+$ iptables -t nat -S | grep CNI-HOSTPORT-DNAT                     # 4
+# 127.0.0.1:8080 on the host -> <container IP>:8080               # 5
+$ curl -s http://127.0.0.1:8080/api
+{"version": "2.x.y"}
+</script><script type="text/plain" id="ev-f6">
+health-agent log (every ~30 s):
+Reporting url: https://notebooks.googleapis.com/v2/projects/my-project/locations/ZONE/instances/my-instance:reportInfoSystem
+Response: <Response [200]>
+
+pull: crictl pull REGION-docker.pkg.dev/PROJECT/REPO/...                   # Artifact Registry
+from inside payload-container: curl http://metadata.google.internal/...    # HTTP 200 (via the bridge + NAT)
+</script><script type="text/plain" id="ev-f7">
+$ gcloud compute ssh my-instance --tunnel-through-iap
+$ who
+user_example_com pts/0 ... (35.235.2xx.xx)             # inside IAP's 35.235.240.0/20
+
+$ id
+uid=NNNNNNNNNN(user_example_com)                        # OS Login (enable-oslogin=TRUE)
+# default-allow-ssh also admits tcp:22 from 0.0.0.0/0, so IAP is optional
+</script><script type="text/plain" id="ev-f8">
+$ sudo ss -ltnp | grep -v 127.0.0
+0.0.0.0:22          sshd
+0.0.0.0:<high port> <optional extra service>      # does it have authentication?
+
+# who can reach a listener on 0.0.0.0:
+#   the internet            only if a firewall rule allows that port
+#   VMs in the same VPC     often yes (default-allow-internal)
+#   same-service-account VMs  if a rule targets that service account
+
+# mitigations: set a password/token, stop the unit, or add a deny rule
+</script><script type="text/plain" id="ev-s13b">
+#!/bin/bash
+# post-startup.sh   (SAMPLE: illustrative, untested)
+#
+# Runs on the COS HOST as root, after payload-container is up.
+# Mounts a GCS bucket with gcsfuse INSIDE the container and rsyncs
+# /home/jupyter into it every 5 minutes.
+#
+# Use with post-startup-script-behavior=run_every_start: the container is
+# recreated on every start, so the mount and the sync loop must be too.
+
+BUCKET="my-workbench-backup"          # <-- your bucket
+DEST="my-instance/home-jupyter"     # folder inside the bucket
+C="payload-container"
+NCTL="/var/lib/google/nerdctl/nerdctl -n k8s.io"
+
+# 1. wait until the Jupyter container is running (about 2 minutes at most)
+for i in $(seq 1 60); do
+  [ "$($NCTL inspect -f '{{.State.Running}}' $C 2>/dev/null)" = "true" ] && break
+  sleep 2
+done
+
+# 2. fail early, with a clear message, if the tools are not in the image
+if ! $NCTL exec $C sh -c 'command -v gcsfuse >/dev/null && command -v rsync >/dev/null'; then
+  echo "gcsfuse or rsync missing in $C. Alternative: gcloud storage rsync -r /home/jupyter gs://$BUCKET/$DEST" >&2
+  exit 1
+fi
+
+# 3. mount the bucket at /mnt/gcs: inside the container, and NOT under
+#    /home/jupyter, so rsync never copies the mount into itself
+$NCTL exec $C bash -c "mkdir -p /mnt/gcs && (mountpoint -q /mnt/gcs || gcsfuse --implicit-dirs $BUCKET /mnt/gcs)"
+
+# 4. start a detached sync loop (flock keeps it to a single copy)
+$NCTL exec -d $C bash -c "
+  exec 9>/tmp/gcs-sync.lock; flock -n 9 || exit 0
+  while true; do
+    rsync -r --inplace --size-only --no-perms --no-owner --no-group \
+          --exclude='.cache/' --exclude='.container_gcloud/' \
+          /home/jupyter/ /mnt/gcs/$DEST/
+    sleep 300
+  done
+"
+
+</script><script>
+(() => {
+'use strict';
+const NS = 'http://www.w3.org/2000/svg';
+const $ = (s, r = document) => r.querySelector(s);
+const ev = id => { const e = document.getElementById('ev-' + id); return e ? e.textContent.replace(/^\n/, '') : ''; };
+
+/* ---------------- theme ---------------- */
+const root = document.documentElement;
+try { const t = localStorage.getItem('wb-theme'); if (t) root.setAttribute('data-theme', t); } catch (e) {}
+$('#theme').addEventListener('click', () => {
+  const dark = getComputedStyle(root).colorScheme.indexOf('dark') >= 0 && root.getAttribute('data-theme') !== 'light';
+  const next = dark ? 'light' : 'dark';
+  root.setAttribute('data-theme', next);
+  try { localStorage.setItem('wb-theme', next); } catch (e) {}
+});
+
+/* ---------------- copy buttons ---------------- */
+document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', () => {
+  const el = document.getElementById(b.dataset.copy);
+  const txt = el ? el.textContent : '';
+  const done = () => { const o = b.textContent; b.textContent = 'Copied'; setTimeout(() => b.textContent = o, 1200); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, () => {});
+  else { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (e) {} ta.remove(); }
+}));
+
+/* ---------------- metadata filter ---------------- */
+const mf = document.getElementById('mfilter');
+if (mf) mf.addEventListener('input', () => {
+  const q = mf.value.trim().toLowerCase();
+  document.querySelectorAll('#metaall tbody tr').forEach(tr => { tr.hidden = !!q && tr.textContent.toLowerCase().indexOf(q) < 0; });
+});
+
+/* ================= boot scene data ================= */
+const NODES = [
+  {id:'user',     x:20,  y:30,  w:190, h:56,  k:'ext',    t:'You (terminal)',        s:['gcloud CLI']},
+  {id:'api',      x:20,  y:130, w:190, h:64,  k:'cloud',  t:'Notebooks API',         s:['notebooks.googleapis.com/v2']},
+  {id:'registry', x:20,  y:286, w:190, h:64,  k:'cloud',  t:'Artifact Registry',     s:['REGION-docker.pkg.dev','/PROJECT/REPO']},
+  {id:'browser',  x:20,  y:380, w:190, h:56,  k:'ext',    t:'You (browser)',         s:['signed in to Google']},
+  {id:'proxy',    x:20,  y:470, w:190, h:74,  k:'cloud',  t:'Google inverting proxy',s:['BACKEND_ID-dot-REGION','.notebooks.googleusercontent…']},
+  {id:'mdsrv',    x:1110,y:40,  w:180, h:64,  k:'meta',   t:'GCE metadata server',   s:['169.254.169.254']},
+  {id:'bucket',   x:1110,y:400, w:180, h:64,  k:'sample', t:'Cloud Storage bucket',  s:['gs://my-workbench-backup','(sample)']},
+  {id:'state',    x:1110,y:640, w:180, h:56,  k:'state',  t:'Instance state',        s:['']},
+
+  {id:'bootdisk', x:250, y:50,  w:190, h:74,  k:'disk',   t:'Boot disk',             s:['COS · / is dm-verity (ro)','sda1 → /mnt/stateful_partition']},
+  {id:'kernel',   x:462, y:50,  w:150, h:56,  k:'vm',     t:'Linux kernel',          s:['+ systemd']},
+  {id:'cloudinit',x:634, y:50,  w:190, h:56,  k:'vm',     t:'cloud-init',            s:['user-data → units, scripts']},
+  {id:'startup',  x:846, y:50,  w:214, h:56,  k:'vm',     t:'cloud-final → startup.sh', s:['runs the steps in order']},
+  {id:'docker',   x:250, y:150, w:190, h:60,  k:'svc',    t:'Docker',                s:['front-end for the agents']},
+  {id:'configure',x:462, y:150, w:170, h:60,  k:'svc',    t:'workbench-configure',   s:['service_generator_agent']},
+  {id:'envinfo',  x:654, y:150, w:150, h:60,  k:'svc',    t:'/tmp/ENV_INFO',         s:['+ generated units']},
+  {id:'gcfs',     x:826, y:150, w:234, h:60,  k:'svc',    t:'gcfsd + snapshotter',   s:['FUSE /run/gcfsd/mnt']},
+  {id:'containerd',x:462,y:240, w:598, h:54,  k:'svc',    t:'containerd',            s:['namespaces: moby, k8s.io · one shim per container · runc']},
+  {id:'pull',     x:462, y:324, w:170, h:60,  k:'svc',    t:'pull payload image',    s:['crictl pull via gcfs']},
+  {id:'datadisk', x:250, y:414, w:190, h:64,  k:'disk',   t:'Data disk (sdb)',       s:['ext4 → /home/jupyter']},
+  {id:'lo',       x:462, y:414, w:170, h:56,  k:'svc',    t:'127.0.0.1:8080',        s:['CNI portmap DNAT']},
+  {id:'payload',  x:654, y:324, w:406, h:196, k:'cont',   t:'payload-container',     s:['namespace k8s.io · root · own IP on nerdctl0','run_jupyter.sh → jupyter-lab :8080','your chosen image (e.g. Ubuntu · CUDA · JupyterLab)']},
+  {id:'home',     x:670, y:412, w:374, h:32,  k:'disk',   t:'/home/jupyter ← sdb (bind mount)', s:[]},
+  {id:'gcsfuse',  x:670, y:450, w:374, h:56,  k:'sample', t:'gcsfuse mount /mnt/gcs (sample)', s:['rsync loop: /home/jupyter → bucket every 5 min']},
+  {id:'proxyagent',x:250,y:556, w:150, h:60,  k:'agent',  t:'proxy-agent',           s:['outbound tunnel']},
+  {id:'healthagent',x:412,y:556,w:150, h:60,  k:'agent',  t:'health-agent',          s:['HEALTH every ~30 s']},
+  {id:'idleagent',x:574, y:556, w:150, h:60,  k:'agent',  t:'idle-shutdown',         s:['agent · polls Jupyter']},
+  {id:'diag',     x:736, y:556, w:150, h:60,  k:'agent',  t:'diagnostic-service',    s:['privileged · --pid host']},
+  {id:'opencode', x:898, y:556, w:162, h:60,  k:'agent',  t:'optional extras',       s:['e.g. an AI agent UI']},
+  {id:'post',     x:700, y:640, w:340, h:56,  k:'svc',    t:'run-post-startup.service', s:['']},
+];
+const FRAMES = [
+  {id:'vm',  x:230, y:16, w:850, h:692, label:'The VM · a standard machine type · one zone', lx:246, ly:12},
+];
+const LABELS = [
+  {id:'lblagents', x:700, y:548, text:'Docker containers · host network · namespace moby'},
+];
+// pts = polyline; both = arrow at both ends; lbl at [x,y]
+const EDGES = [
+  {id:'user_api',  pts:[[115,86],[115,130]], lbl:'create', l:[122,112]},
+  {id:'api_vm',    pts:[[210,162],[222,162],[222,87],[250,87]]},
+  {id:'boot_kernel',pts:[[440,80],[462,80]]},
+  {id:'kernel_init',pts:[[612,78],[634,78]]},
+  {id:'init_startup',pts:[[824,78],[846,78]]},
+  {id:'md_init',   pts:[[1110,56],[1096,56],[1096,32],[729,32],[729,50]], lbl:'user-data', l:[910,28]},
+  {id:'md_cfg',    pts:[[1110,88],[1090,88],[1090,132],[547,132],[547,150]], lbl:'instance attributes', l:[800,128]},
+  {id:'startup_cfg',pts:[[900,106],[900,118],[500,118],[500,150]], lbl:'step 2', l:[700,114]},
+  {id:'cfg_env',   pts:[[632,180],[654,180]]},
+  {id:'docker_cd', pts:[[345,210],[345,267],[462,267]]},
+  {id:'gcfs_cd',   pts:[[943,210],[943,240]], lbl:'gcfs', l:[950,230]},
+  {id:'reg_pull',  pts:[[210,318],[462,354]], lbl:'crictl pull', l:[330,328]},
+  {id:'pull_cd',   pts:[[547,324],[547,294]]},
+  {id:'cd_payload',pts:[[850,294],[850,324]], lbl:'nerdctl run → runc', l:[858,314]},
+  {id:'lo_payload',pts:[[632,442],[654,442]]},
+  {id:'mount',     pts:[[345,478],[345,530],[850,530],[850,520]], lbl:'bind mount', l:[560,526]},
+  {id:'pa_proxy',  pts:[[325,556],[325,512],[210,512]], lbl:'outbound tunnel', l:[268,506], both:true},
+  {id:'pa_lo',     pts:[[375,556],[375,498],[490,498],[490,470]]},
+  {id:'ha_lo',     pts:[[487,556],[487,510],[547,510],[547,470]]},
+  {id:'ia_lo',     pts:[[649,556],[649,510],[604,510],[604,470]]},
+  {id:'ha_api',    pts:[[487,616],[487,714],[8,714],[8,162],[20,162]], lbl:'HEALTH every ~30 s', l:[240,710]},
+  {id:'browser_proxy',pts:[[115,436],[115,470]], lbl:'open URL', l:[122,456]},
+  {id:'rtread',    pts:[[1060,350],[1200,350],[1200,104]], lbl:'live read: attributes + SA token', l:[1128,344], both:true},
+  {id:'post_gcs',  pts:[[1040,668],[1071,668],[1071,490],[1044,490]], lbl:'nerdctl exec', l:[1076,600], sample:true},
+  {id:'fuse_bucket',pts:[[1044,462],[1062,462],[1062,432],[1110,432]], lbl:'to GCS', l:[1066,426], sample:true},
+];
+
+/* ---------------- steps ---------------- */
+// r.n / r.e: nodes and edges revealed from this step on. f: nodes in focus. fl: edges animated. set: text overrides.
+const STEPS = [
+ {key:'s0', tl:-1, time:'t = 0', title:'Clean slate',
+  r:{n:['user'], e:[], fr:[]}, f:['user'], set:{state:null},
+  what:['Nothing exists yet: no VM, no disks, no containers, no agents.','One command asks the Notebooks API for a container-based Workbench instance. The image to run is passed as <code>--container-repository</code> and <code>--container-tag</code>.','The rest of this walkthrough is what that command typically causes, in the order it happens.'],
+  ev:'s0', evt:'your terminal'},
+ {key:'s1', tl:0, time:'creation', title:'The Notebooks API creates the VM',
+  r:{n:['api','bootdisk','datadisk','mdsrv'], e:['user_api','api_vm'], fr:['vm']}, f:['api','bootdisk','datadisk'], set:{state:['PROVISIONING']},
+  what:['The API creates a Compute Engine VM with <b>two disks</b>: a boot disk cloned from a Google-owned image, and a blank data disk named <code>data-workspace</code>.','The boot image is named like <code>workbench-container-host-BUILD_TAG</code> and lives in the project <code>cloud-notebooks-managed</code>. Its licences show Container-Optimized OS.','The API also writes <b>instance metadata</b>, including <code>custom-container-payload</code> (the image you chose) and a <code>user-data</code> key that points at a cloud-config file on the disk.'],
+  note:'<span class="tag obs">typical</span>You cannot read the image in <code>cloud-notebooks-managed</code> (<code>compute.images.get</code> is denied), so its family and description are not visible to you.',
+  ev:'s1', evt:'gcloud compute disks describe'},
+ {key:'s2', tl:1, time:'first seconds', title:'Kernel and systemd boot Container-Optimized OS',
+  r:{n:['kernel'], e:['boot_kernel'], fr:[]}, f:['kernel','bootdisk'],
+  what:['The kernel boots in a few seconds. The root filesystem is a <b>small dm-verity device, read-only</b>.','COS has no package manager. Anything extra runs in containers, and persistent state lives on the stateful partition (<code>sda1</code>) and the data disk.','<code>docker.socket</code> and containerd come up early, because everything that follows is container-based.'],
+  ev:'s2', evt:'systemd-analyze'},
+ {key:'s3', tl:2, time:'tens of seconds in', title:'cloud-init reads the user-data',
+  r:{n:['cloudinit'], e:['kernel_init','md_init'], fr:[]}, f:['cloudinit','mdsrv'],
+  what:['cloud-init asks the metadata server for <code>user-data</code>, which is <code>#include file:///mnt/stateful_partition/workbench/cloud-config.yaml</code>.','From that file it <b>creates two users</b> (<code>jupyter</code> and <code>executoragent</code>), and <b>writes about 20 systemd units</b> plus helper scripts to <code>/etc/systemd/system</code> and <code>/mnt/stateful_partition/workbench</code>.','The last instruction is <code>runcmd: /etc/systemd/system/startup.sh</code>.'],
+  ev:'s3', evt:'cloud-init'},
+ {key:'s4', tl:2, time:'cloud-final', title:'startup.sh takes over: about a dozen steps, one after another',
+  r:{n:['startup'], e:['init_startup'], fr:[]}, f:['startup'],
+  what:['<code>cloud-final.service</code> runs <code>startup.sh</code> <b>synchronously</b>. It is a list of <code>systemctl start</code> commands, so the boot is mostly <b>sequential</b>.','That one service accounts for nearly all of the boot time, which is why userspace boot takes several minutes.','Steps: configure, mount the data disk, start image streaming, pull the image, start Jupyter, start the agents, start any extras, run the post-startup script, clean up.'],
+  ev:'s4', evt:'startup.sh'},
+ {key:'s5', tl:3, time:'step 2 · seconds', title:'workbench-configure turns metadata into /tmp/ENV_INFO',
+  r:{n:['docker','configure','envinfo'], e:['md_cfg','startup_cfg','cfg_env'], fr:[]}, f:['configure','envinfo'], fl:['md_cfg','cfg_env'],
+  what:['<code>workbench-configure.service</code> runs a <b>Docker container</b> (<code>workbench-instances-agent</code>, command <code>service_generator_agent</code>) with <code>/etc</code>, <code>/tmp</code> and the systemd directory bind-mounted.','The agent reads instance metadata and writes <b><code>/tmp/ENV_INFO</code></b>, a flat <code>KEY=VALUE</code> file, and (inferred) generated unit files.','Later units load it with <code>EnvironmentFile=/tmp/ENV_INFO</code> and expand it into command lines. This is how metadata cascades down to the Jupyter container.'],
+  note:'<span class="tag inf">inferred</span>The mapping from metadata key to variable is inside a binary that is not publicly documented. The variable names below are what such a file typically contains.',
+  ev:'s5', evt:'/tmp/ENV_INFO'},
+ {key:'s6', tl:3, time:'step 2 · seconds', title:'The data disk is mounted at /home/jupyter',
+  r:{n:[], e:[], fr:[]}, f:['datadisk'], set:{datadisk:['ext4 → /home/jupyter ✓']},
+  what:['<code>workbench-mount-disk.service</code> finds <code>/dev/disk/by-id/google-data-workspace</code> (device <code>sdb</code>) and mounts it at <b><code>/home/jupyter</code></b>, then remounts it with <code>exec</code>.','If the directory is not owned by the container user, it runs <code>chown -R 0:0</code> on it, because the container runs as root.','This disk <b>persists across restarts</b>. It is later bind-mounted into the Jupyter container (and into any extras).'],
+  ev:'s6', evt:'mount-disk.sh'},
+ {key:'s7', tl:3, time:'step 3 · seconds', title:'Image streaming: gcfsd, the snapshotter and containerd',
+  r:{n:['gcfs','containerd'], e:['gcfs_cd','docker_cd'], fr:[]}, f:['gcfs','containerd'], fl:['gcfs_cd'],
+  what:['<code>riptide-init</code> has copied the streaming config into place. <b><code>gcfsd</code></b> mounts a FUSE filesystem at <code>/run/gcfsd/mnt</code>, and a <b>snapshotter plugin</b> (<code>containerd-gcfs-grpc</code>) is registered with containerd as <code>gcfs</code>.','containerd is then restarted so it picks that up. It is the single container manager: Docker, nerdctl and crictl all talk to it, and it launches <b>runc</b> to create each container.','The idea: file contents are fetched from the registry on first read, so a container can start before the whole image has downloaded.'],
+  note:'<span class="tag obs">typical</span>The config and mount look like this. The lazy-fetch behaviour is Google\'s documented design for image streaming.',
+  ev:'s7', evt:'containerd + gcfsd'},
+ {key:'s8', tl:4, time:'step 4 · minutes', title:'The Jupyter image is pulled: the slow step',
+  r:{n:['registry','pull'], e:['reg_pull','pull_cd'], fr:[]}, f:['pull','registry'], fl:['reg_pull','pull_cd'], bar:true,
+  what:['The script gets a token with <code>gcloud auth print-access-token</code> inside a throw-away <code>vertex/gcloud</code> container, then runs <b><code>crictl pull</code></b> through the gcfs snapshotter.','On <b>first boot only</b>, if <code>/home/jupyter</code> is empty, it also copies the image\'s <code>/home</code> content onto the data disk, which forces those files to download.','This unit typically takes <b>several minutes</b> and dominates the boot. The time depends on the image size, the region and the registry.'],
+  note:'<span class="tag inf">inferred</span>Part of the time may be the first-boot copy reading files from the streamed image. The journal has no per-step timings.',
+  ev:'s8', evt:'pull-custom-container-payload'},
+ {key:'s9', tl:5, time:'step 6 · seconds', title:'nerdctl starts payload-container (this is Jupyter)',
+  r:{n:['payload','lo','home'], e:['cd_payload','lo_payload','mount'], fr:[]}, f:['payload','home'], fl:['cd_payload','mount'],
+  what:['<code>jupyter-payload.service</code> expands <code>ENV_INFO</code> into one <code>nerdctl run</code> command in containerd namespace <b><code>k8s.io</code></b>. containerd starts a shim, and the shim runs <b>runc</b>, which creates the namespaces and cgroups.','Key flags: publish <b><code>127.0.0.1:8080</code></b> only, FUSE enabled (<code>--device /dev/fuse --cap-add SYS_ADMIN</code>), <code>--user 0:0</code>, <code>/home/jupyter</code> bind-mounted, and environment such as <code>GOOGLE_CLOUD_PROJECT</code> and <code>VERTEX_PRODUCT</code>.','Inside, PID 1 is <code>/run_jupyter.sh</code>, which starts <b><code>jupyter-lab --allow-root</code></b> on <code>0.0.0.0:8080</code> with an empty token. The container gets its own mnt, pid, net, uts, ipc and cgroup namespaces.'],
+  ev:'s9', evt:'payload-container'},
+ {key:'s10', tl:5, time:'step 8 · seconds', title:'proxy-agent opens an outbound tunnel to Google',
+  r:{n:['proxyagent','proxy','browser','lblagents'], e:['pa_proxy','pa_lo'], fr:[]}, f:['proxyagent','proxy'], fl:['pa_proxy','pa_lo'],
+  what:['<code>proxy-agent</code> is a Docker container on the <b>host network</b>. It registers with Google\'s inverting proxy using the <code>BACKEND</code> id and registration URL from <code>ENV_INFO</code>, and keeps an <b>outbound</b> connection open.','So the VM needs <b>no inbound port</b> for Jupyter. Requests arrive down this tunnel and are forwarded to <code>127.0.0.1:8080</code>.','On the host, <code>127.0.0.1:8080</code> is a CNI port-forward (iptables DNAT) into the container on the <code>nerdctl0</code> bridge.'],
+  ev:'s10', evt:'proxy-agent'},
+ {key:'s11', tl:5, time:'step 8 · seconds', title:'Health, idle-shutdown and diagnostic agents start',
+  r:{n:['healthagent','idleagent','diag','lblagents'], e:['ha_lo','ia_lo','ha_api'], fr:[]}, f:['healthagent','idleagent','diag'], fl:['ha_api'],
+  what:['All three run from one image, with <code>--net host</code>, so they reach Jupyter at <code>127.0.0.1:8080</code>.','<b>health-agent</b> posts a HEALTH report to the Notebooks API about every 30 s. It watches the agent containers by name and has the Docker socket mounted.','<b>idle-shutdown-agent</b> polls Jupyter for activity against <code>idle-timeout-seconds</code>. <b>diagnostic-service</b> is privileged with <code>--pid host</code>.'],
+  ev:'s11', evt:'agents'},
+ {key:'s12', tl:5, time:'step 9 · seconds', title:'Optional extras may start too',
+  r:{n:['opencode'], e:[], fr:[]}, f:['opencode'],
+  what:['Depending on the image version, the image\'s own cloud-config can also start extra services, for example an AI coding agent with a web UI on a high host port, listening on all interfaces.','Such a service is not part of Jupyter. Whether it needs a password, and who can reach it, depends on the image and on your firewall.','Check with <code>ss -ltnp</code> on the host and secure or stop anything you do not need.'],
+  note:'<span class="tag warn">check</span>Not something you configured, and not necessarily reachable from outside, but worth reviewing. See the Risks section.',
+  warn:true, ev:'s12', evt:'optional extras'},
+ {key:'s13', tl:5, time:'steps 10 and 11', title:'run-post-startup and cleanup',
+  r:{n:['post'], e:[], fr:[]}, f:['post','startup'], set:{post:['no script set → no-op (RUN_POST_STARTUP_SCRIPT=False)']},
+  what:['<code>run-post-startup.service</code> is the hook for your post-startup script. It runs <b>on the COS host, as root</b>, after the container and agents are up.','With no script set it does nothing. <code>workbench-cleanup</code> then prunes unused Docker volumes and nerdctl images.','Because the script runs on the host (no package manager), it has to reach the container with <code>nerdctl -n k8s.io exec</code>, or work through <code>/home/jupyter</code>.'],
+  ev:'s13', evt:'run_post_startup_script.sh'},
+ {key:'s13b', sample:true, tl:5, time:'sample · step 10', title:'Sample: a post-startup script mounts a bucket with gcsfuse and syncs',
+  r:{n:['gcsfuse','bucket'], e:['post_gcs','fuse_bucket'], fr:[]}, f:['post','gcsfuse','bucket'], fl:['post_gcs','fuse_bucket'],
+  set:{post:['post-startup.sh from gs://… (sample)']},
+  what:['Imagine <code>post-startup-script=gs://…/post-startup.sh</code> with <code>run_every_start</code>. The host runs it as root once the container is up.','It uses <code>nerdctl exec</code> to <b>mount the bucket with gcsfuse at <code>/mnt/gcs</code> inside the container</b> (FUSE is already enabled), then starts a detached <b>rsync loop</b> copying <code>/home/jupyter</code> into the bucket every 5 minutes.','<code>run_every_start</code> is needed because the container is recreated on every start, which discards the mount and the loop. The VM service account needs write access to the bucket.'],
+  note:'<span class="tag smp">sample</span>Illustrative and <b>untested</b>. Whether <code>gcsfuse</code> and <code>rsync</code> exist in your image is unverified. The full script is in the Post-startup section.',
+  ev:'s13b', evt:'post-startup.sh (sample)'},
+ {key:'s14', tl:6, time:'about 10 minutes', title:'The VM is ready: PROVISIONING becomes ACTIVE',
+  r:{n:['state'], e:[], fr:[]}, f:['healthagent','state','api'], fl:['ha_api'], set:{state:['ACTIVE']},
+  what:['<code>startup.sh</code> returns, <code>cloud-final</code> finishes, and <code>multi-user.target</code> is reached.','The health agent\'s reports reach the Notebooks API, and the instance state changes to <b>ACTIVE</b>.','Roughly ten minutes from one command, most of it one image pull. A small image or a warm cache can make it much shorter.'],
+  ev:'s14', evt:'health report'},
+ {key:'s15', tl:6, time:'first session', title:'You open JupyterLab: the request path',
+  r:{n:[], e:['browser_proxy','rtread'], fr:[]}, f:['browser','proxy','proxyagent','lo','payload'], fl:['browser_proxy','pa_proxy','pa_lo','lo_payload','rtread'], seq:true,
+  what:['1. The browser opens the proxy URL. Google checks your IAM access.','2. The proxy sends the request <b>down the agent\'s outbound tunnel</b>. 3. <code>proxy-agent</code> forwards it to <code>127.0.0.1:8080</code> (websockets included). 4. The CNI port-forward delivers it to the container, where <code>jupyter-lab</code> answers.','From inside, the container can also read the metadata server (purple arrow): any attribute, and a token for the VM service account.'],
+  ev:'s15', evt:'request path'},
+ {key:'s16', tl:6, time:'later · idle stop', title:'Steady state, then the VM may stop itself',
+  r:{n:[], e:[], fr:[]}, f:['idleagent','healthagent'], fl:['ha_api'], set:{state:['STOPPED']},
+  what:['In steady state the health agent keeps reporting about every 30 s, and the idle agent watches for activity against the idle timeout (default 3 hours).','When the timeout passes, the Compute <code>stop</code> call is made by the <b>Notebooks service agent</b>, not by a user. On stop, <code>ExecStopPost</code> runs the shutdown script, which cleans up leftover gcsfuse mounts.','Stopped VMs stop billing for compute, but the disks still cost money until the instance is deleted.'],
+  note:'<span class="tag inf">inferred</span>That a service-agent stop is the idle timeout: it is the usual cause, but only the idle agent\'s logs can confirm it.',
+  ev:'s16', evt:'gcloud compute instances describe'},
+];
+
+const SEGS = [
+  {t:'Create', d:'API call'}, {t:'Kernel', d:'seconds'}, {t:'cloud-init', d:'tens of s'}, {t:'Configure + mount', d:'seconds'},
+  {t:'Image pull', d:'minutes', c:'pull'}, {t:'Container + agents', d:'under a minute'}, {t:'Ready', d:'about 10 min total'}
+];
+
+
+/* ================= helpers ================= */
+const N = (id, x, y, w, h, k, t, s) => ({id, x, y, w, h, k, t, s: s || []});
+const E = (id, pts, lbl, l, o) => Object.assign({id, pts}, lbl ? {lbl, l} : {}, o || {});
+const ST = (key, time, title, r, f, what, ev, evt, o) => Object.assign({key, tl: -1, time, title, r, f, what, ev, evt}, o || {});
+
+/* ================= scene 1: build the VM ================= */
+const SC_BUILD = {
+  id: 'build', tab: '1 · Build the VM', intro: 'Notebooks API → Compute API',
+  nodes: [
+    N('user', 20, 40, 190, 64, 'ext', 'You (terminal)', ['gcloud workbench', 'instances create']),
+    N('nb', 250, 40, 230, 84, 'cloud', 'Notebooks API', ['notebooks.googleapis.com/v2', 'Vertex AI Workbench control plane']),
+    N('sa', 520, 40, 260, 84, 'meta', 'Notebooks service agent', ['service-PROJECT_NUMBER@', 'gcp-sa-notebooks.iam.gserviceaccount.com']),
+    N('lro', 250, 190, 230, 64, 'cloud', 'Long-running operation', ['operation-…', 'gcloud polls until done']),
+    N('compute', 520, 190, 260, 84, 'cloud', 'Compute Engine API', ['compute.googleapis.com', 'instances.insert · setMetadata · stop']),
+    N('image', 250, 330, 230, 92, 'cloud', 'Boot image (Google project)', ['cloud-notebooks-managed', 'workbench-container-host-', 'BUILD_TAG']),
+    N('opslog', 250, 450, 530, 150, 'ext', 'Compute operations log (typical)', ['insert        my-instance', 'setMetadata   my-instance', 'stop          my-instance', 'principal on all of them:', 'service-PROJECT_NUMBER@gcp-sa-notebooks…']),
+    N('spec', 860, 80, 390, 100, 'vm', 'The instance', ['a standard machine type · shielded VM (vTPM + integrity monitoring)', 'labels: notebooks-product=workbench-instances', 'tags: deeplearning-vm, notebook-instance']),
+    N('bootd', 860, 200, 180, 126, 'disk', 'Boot disk', ['INSTANCE-boot', 'size you choose · pd-standard', 'cloned from the image', 'autoDelete: true']),
+    N('datad', 1070, 200, 180, 126, 'disk', 'Data disk', ['INSTANCE-data-', 'workspace', 'pd-standard (blank)', 'autoDelete: true']),
+    N('nic', 860, 346, 180, 110, 'svc', 'nic0', ['network: default', 'a regional subnet', 'internal IP', '+ ephemeral external IP']),
+    N('meta', 1070, 346, 180, 110, 'meta', 'Metadata (~two dozen keys)', ['custom-container-payload', 'proxy-* · idle-timeout', 'user-data → cloud-config', 'report-event-url …']),
+    N('sacct', 860, 476, 390, 70, 'svc', 'Attached service account', ['PROJECT_NUMBER-compute@developer.gserviceaccount.com', 'scopes: cloud-platform, userinfo.email']),
+  ],
+  frames: [
+    {id: 'proj', x: 820, y: 16, w: 470, h: 690, label: 'Your project · a zone', lx: 836, ly: 36},
+    {id: 'vmf', x: 840, y: 50, w: 430, h: 520, label: 'The VM', lx: 856, ly: 70},
+  ],
+  labels: [],
+  edges: [
+    E('user_nb', [[210, 72], [250, 72]]),
+    E('nb_sa', [[480, 82], [520, 82]]),
+    E('nb_lro', [[365, 124], [365, 190]], 'operation', [372, 162]),
+    E('lro_user', [[250, 222], [115, 222], [115, 104]], 'polls', [124, 214]),
+    E('sa_compute', [[650, 124], [650, 190]], 'API call', [658, 162]),
+    E('comp_spec', [[780, 232], [800, 232], [800, 130], [860, 130]]),
+    E('img_boot', [[480, 376], [815, 376], [815, 263], [860, 263]], 'sourceImage', [520, 370]),
+    E('comp_ops', [[650, 274], [650, 450]], 'recorded', [658, 300]),
+  ],
+  steps: [
+    ST('a0', 't = 0', 'Clean slate', {n: ['user'], e: [], fr: ['proj']}, ['user'],
+      ['Your project has no instance and no disks for this Workbench yet.', 'The only thing that exists is a request you are about to send.', 'This scene follows it through the <b>Notebooks API</b> into the <b>Compute API</b> until the VM resources exist. The next scenes cover where the images come from, and then the boot.'], 'a0', 'your terminal'),
+    ST('a1', 'seconds', 'You call the Notebooks API', {n: ['nb'], e: ['user_nb'], fr: []}, ['nb', 'user'],
+      ['<code>gcloud workbench instances create</code> is a REST call to <code>notebooks.googleapis.com/v2</code> (<code>projects.locations.instances.create</code>).', 'The body carries the container image you chose and any metadata you add. It says nothing about disks, networks or the boot image: the API decides those.', 'The Notebooks API is Google\'s Vertex AI Workbench control plane. It sits outside your project.'], 'a1', 'the request', {note: '<span class="tag inf">illustrative</span>The request body shown is simplified.', fl: ['user_nb']}),
+    ST('a2', 'immediately', 'It returns a long-running operation straight away', {n: ['lro'], e: ['nb_lro', 'lro_user'], fr: []}, ['lro'],
+      ['The API answers at once with an <b>operation</b>. <code>gcloud</code> then polls it until it is done, printing a dot per poll.', 'Meanwhile the API validates the request and <b>fills in the defaults</b>: a standard machine type, a boot disk, a data disk, the <code>default</code> network, the default compute service account, a couple of network tags and about two dozen metadata keys.'], 'a2', 'gcloud output', {fl: ['nb_lro', 'lro_user']}),
+    ST('a3', 'a moment later', 'It acts as the Notebooks service agent and calls Compute', {n: ['sa', 'compute'], e: ['nb_sa', 'sa_compute'], fr: []}, ['sa', 'compute', 'nb'],
+      ['The API does <b>not</b> call Compute with your credentials. The principal on the Compute calls is <code>service-PROJECT_NUMBER@gcp-sa-notebooks.iam.gserviceaccount.com</code>, the Notebooks <b>service agent</b> of your project.', 'It calls <code>instances.insert</code> on <code>compute.googleapis.com</code>.'], 'a3', 'who called Compute', {note: '<span class="tag obs">typical</span>You can see the principal in the Compute operations list (two steps on).', fl: ['nb_sa', 'sa_compute']}),
+    ST('a4', 'one call', 'Compute creates the instance and both disks in one call', {n: ['spec', 'bootd', 'datad', 'nic', 'meta', 'sacct', 'image'], e: ['comp_spec', 'img_boot'], fr: ['vmf']}, ['spec', 'bootd', 'datad'],
+      ['One <code>insert</code> creates the <b>instance</b>, a <b>boot disk</b> cloned from the Google image, and a blank <b>data disk</b>. Their creation timestamps are within milliseconds of each other.', 'It also attaches the NIC (default subnet, ephemeral external IP), the default compute service account, the <b>metadata keys</b>, labels, network tags and shielded-VM settings.', 'The boot image lives in <code>cloud-notebooks-managed</code>, a Google-owned project you cannot read.'], 'a4', 'describe: instance + disks', {fl: ['comp_spec', 'img_boot']}),
+    ST('a5', 'recorded', 'Compute records what happened', {n: ['opslog'], e: ['comp_ops'], fr: []}, ['opslog', 'compute'],
+      ['Compute keeps an operations log. Over an instance\'s life you will typically see <code>insert</code>, <code>setMetadata</code> and later <code>stop</code> (and <code>start</code> after a restart).', 'They share one principal: the Notebooks service agent. That is how you can tell the Notebooks API, not a person, drives the VM\'s lifecycle.'], 'a5', 'operations list', {fl: ['comp_ops']}),
+    ST('a6', 'shortly after start', 'A second call: setMetadata', {n: [], e: [], fr: []}, ['compute', 'opslog', 'meta'],
+      ['Soon after the VM starts, the same service agent usually calls <code>setMetadata</code>.', 'The record does not say what changed. The proxy keys (<code>proxy-url</code>, <code>proxy-backend-id</code>) are present afterwards, so a plausible guess is that they are written at that point. That is not verified.'], 'a6', 'setMetadata', {note: '<span class="tag inf">inferred</span>Only the existence of the call is visible in the log, not its contents.'}),
+    ST('a7', 'later', 'Later: the service agent stops the VM', {n: [], e: [], fr: []}, ['opslog', 'sa'],
+      ['When an instance has been idle past its timeout (<code>idle-timeout-seconds</code>, default 3 hours), the <b>service agent</b> calls <code>stop</code>. A user clicking stop appears under the user\'s own identity instead.', 'So a stop by the service agent in the operations list is the usual sign of an idle shutdown, though the idle agent\'s own logs are the place to confirm.'], 'a7', 'stop operation', {note: '<span class="tag inf">inferred</span>The idle timeout is the usual cause of a service-agent stop, but the log only shows the principal.'}),
+    ST('a8', 'ownership', 'What you own afterwards', {n: [], e: [], fr: []}, ['bootd', 'datad'],
+      ['Everything lives in <b>your project</b>, labelled <code>notebooks-product=workbench-instances</code>. You pay for it.', 'Both disks are created with <b><code>autoDelete: true</code></b>: deleting the instance deletes <code>/home/jupyter</code> too. A stopped VM keeps its disks, and they keep billing.'], 'a8', 'disks', {warn: true, note: '<span class="tag warn">heads-up</span>Copy anything you need out of <code>/home/jupyter</code> before deleting the instance.'}),
+  ],
+};
+
+/* ================= scene 2: image supply chain ================= */
+const SC_SUPPLY = {
+  id: 'supply', tab: '2 · Image supply chain', intro: 'baked or pulled',
+  nodes: [
+    N('cosbase', 20, 60, 200, 92, 'host', 'Container-Optimized OS', ['recent milestone · cos-cloud', 'licence cos']),
+    N('build', 250, 60, 200, 92, 'ext', 'Google image build', ['not visible to you', 'adds Workbench scripts,', 'agents, nerdctl, gcfs']),
+    N('img', 480, 60, 260, 92, 'cloud', 'Host image', ['cloud-notebooks-managed /', 'workbench-container-host-', 'BUILD_TAG']),
+    N('disk', 770, 60, 230, 92, 'disk', 'Boot disk (your project)', ['INSTANCE-boot', 'cloned at instances.insert']),
+    N('baked', 770, 180, 510, 160, 'vm', 'Baked into the boot disk', ['base cloud-config.yaml, configure.sh,', 'utils.sh, jupyter_notebook_config.py', 'Docker images tagged :local (agents, gcloud, proxy, extras)', 'Docker · containerd · runc · nerdctl · crictl', 'gcfsd + snapshotter (image streaming)', 'COS · current kernel · dm-verity root']),
+    N('reg1', 20, 430, 290, 80, 'cloud', 'notebooks-images-autopush', ['us-docker.pkg.dev/…', 'colab-on-workbench: agent, gcloud, executor', 'inverting-proxy: proxy agent']),
+    N('reg2', 20, 518, 290, 56, 'cloud', 'deeplearning-platform', ['workbench-agentic/… (optional extras)']),
+    N('reg3', 20, 582, 290, 62, 'cloud', 'cos-cloud · cloud-builders', ['cos-gpu-installer:v2.7.11 · metadata:latest']),
+    N('reg4', 20, 652, 290, 62, 'cloud', 'workbench-images', ['…/YOUR_IMAGE:latest (you chose)']),
+    N('dstore', 710, 450, 270, 120, 'agent', 'Docker image store (moby)', ['vertex/*:local', 'agents, gcloud, proxy,', 'executor, extras']),
+    N('cstore', 1000, 450, 260, 120, 'cont', 'containerd store (k8s.io)', ['YOUR_IMAGE', 'streamed by gcfsd, cached']),
+  ],
+  frames: [{id: 'vmfB', x: 690, y: 410, w: 590, h: 290, label: 'On the VM: stateful partition (/var)', lx: 980, ly: 432}],
+  labels: [],
+  edges: [
+    E('cos_build', [[220, 106], [250, 106]]),
+    E('build_img', [[450, 106], [480, 106]]),
+    E('img_disk', [[740, 106], [770, 106]]),
+    E('disk_baked', [[885, 152], [885, 180]], 'contains', [893, 170]),
+    E('baked_dstore', [[845, 340], [845, 450]], 'already there', [853, 396]),
+    E('r1_d', [[310, 470], [710, 492]], 'baked at build time', [390, 468]),
+    E('r2_d', [[310, 546], [710, 530]]),
+    E('r3_d', [[310, 613], [710, 556]]),
+    E('r4_c', [[310, 685], [1130, 685], [1130, 570]], 'crictl pull at boot (usually minutes)', [500, 678]),
+  ],
+  steps: [
+    ST('b0', 'question', 'Clean slate: where does everything on the VM come from?', {n: [], e: [], fr: ['vmfB']}, [],
+      ['The VM disk starts empty. Everything that ends up on it arrives by one of <b>two routes</b>.', '<b>Route 1:</b> baked into the boot image when Google built it. <b>Route 2:</b> container images, mostly baked too, and one pulled at boot.'], 'b0', 'the question'),
+    ST('b1', 'route 1', 'The base OS is Google\'s Container-Optimized OS', {n: ['cosbase'], e: [], fr: []}, ['cosbase'],
+      ['The boot disk\'s licences include <code>cos-cloud/…/licenses/cos</code>: the base is <b>Container-Optimized OS</b> (COS), a recent milestone with a current Linux kernel.', 'COS has a read-only root and no package manager. Automatic OS updates are typically turned off (<code>cos-update-strategy</code>).'], 'b1', 'licences + os-release'),
+    ST('b2', 'route 1', 'Google builds the Workbench host image', {n: ['build', 'img'], e: ['cos_build', 'build_img'], fr: []}, ['build', 'img'],
+      ['Google\'s build adds the Workbench scripts, the agent images, the container runtimes, <code>nerdctl</code> and the gcfs streaming components on top of COS.', 'The result is an image named like <code>workbench-container-host-BUILD_TAG</code> in the Google-owned project <b><code>cloud-notebooks-managed</code></b>. A second licence, <code>c2d-dl-platform-workbench-instances-custom-container-host</code>, names this variant.'], 'b2', 'the image', {note: '<span class="tag inf">inferred</span>The build pipeline is not visible to you: <code>compute.images.get</code> is denied on that project.', fl: ['cos_build', 'build_img']}),
+    ST('b3', 'at creation', 'At creation, the image is cloned onto your boot disk', {n: ['disk'], e: ['img_disk'], fr: []}, ['disk'],
+      ['The Compute <code>insert</code> clones the image onto your boot disk. The disk records its <code>sourceImage</code> and image id.', 'From then on the host is <b>fixed</b> to that image: there is no apt, and COS updates are typically off.'], 'b3', 'boot disk', {fl: ['img_disk']}),
+    ST('b4', 'baked', 'What is baked into the boot disk', {n: ['baked'], e: ['disk_baked'], fr: []}, ['baked'],
+      ['Baked-in files include the base <code>cloud-config.yaml</code>, <code>configure.sh</code>, <code>utils.sh</code> and <code>jupyter_notebook_config.py</code>. Their modification dates are the image build date. Files such as <code>mount-disk.sh</code> carry the boot date instead, because cloud-init writes them at boot from the baked cloud-config.', 'Also on the disk from the start: Docker, containerd, runc, nerdctl, crictl, <code>gcfsd</code>, and the Docker images tagged <code>:local</code>.'], 'b4', 'ls -la workbench/', {fl: ['disk_baked']}),
+    ST('b5', 'baked', 'The agent images are baked in too, retagged :local', {n: ['reg1', 'reg2', 'reg3', 'dstore'], e: ['r1_d', 'r2_d', 'r3_d', 'baked_dstore'], fr: []}, ['dstore', 'reg1', 'reg2', 'reg3'],
+      ['The agent, <code>gcloud</code>, proxy and executor images, any optional extras, the GPU installer and the metadata helper all sit in the Docker image store, retagged <code>vertex/*:local</code>.', 'They are <b>not pulled at boot</b>: the first units that need them run them immediately, before any pull happens. Their registry tags match the host image version.'], 'b5', 'docker images', {note: '<span class="tag inf">inferred</span>"Baked" is concluded from the <code>:local</code> tags and from units running them before any pull, not from the build log.', fl: ['r1_d', 'r2_d', 'r3_d']}),
+    ST('b6', 'at boot', 'One image is pulled at boot: the Jupyter container', {n: ['reg4', 'cstore'], e: ['r4_c'], fr: []}, ['reg4', 'cstore'],
+      ['The Jupyter image you chose (<code>YOUR_IMAGE:latest</code>) is the only one fetched at boot: <code>crictl pull</code> through the gcfs snapshotter into the containerd <code>k8s.io</code> store. This is typically <b>the slowest step</b>, often minutes for a large image.', 'Because the tag is <code>:latest</code>, the docs say the instance pulls a newer image on every restart, so the Jupyter image can move without a new VM image.', 'The pull uses a token from the VM service account. Public images need no role; a private repository needs Artifact Registry Reader.'], 'b6', 'pull-custom-container-payload', {fl: ['r4_c']}),
+    ST('b7', 'summary', 'Baked versus written versus pulled', {n: [], e: [], fr: []}, ['baked', 'dstore', 'cstore'],
+      ['<b>Baked:</b> OS, runtimes, scripts, the agent images. <b>Written at boot:</b> systemd units and helper scripts, from the baked cloud-config. <b>Pulled at boot:</b> the Jupyter image only.', 'Versions move in lockstep for the baked parts (one build tag) and float for the pulled one (<code>:latest</code>).'], 'b7', 'summary'),
+  ],
+};
+
+/* ================= scene 4: metadata ================= */
+const SC_META = {
+  id: 'meta', tab: '4 · Metadata', intro: 'values pumped in',
+  nodes: [
+    N('g1', 20, 30, 360, 64, 'meta', 'Identity', ['notebooks-api · notebooks-api-version=v2 · version', 'resource-url · instance-region']),
+    N('g2', 20, 102, 360, 64, 'meta', 'Container', ['custom-container-payload · custom-container-image', 'cos-update-strategy']),
+    N('g3', 20, 174, 360, 78, 'meta', 'Proxy / ingress', ['proxy-backend-id · proxy-url · proxy-mode', 'proxy-registration-url · new-proxy-agent-enabled', 'service-account-mode']),
+    N('g4', 20, 260, 360, 64, 'meta', 'Lifecycle', ['idle-timeout-seconds', 'shutdown-script']),
+    N('g5', 20, 332, 360, 64, 'meta', 'Access + logging', ['enable-oslogin · enable-guest-attributes', 'google-logging-enabled · serial-port-logging-enable']),
+    N('g6', 20, 404, 360, 64, 'meta', 'Feature flags', ['enable-jupyterlab4 · enable-antigravity', 'disable-swap-binaries']),
+    N('g7', 20, 476, 360, 52, 'meta', 'Reporting', ['report-event-url']),
+    N('g8', 20, 536, 360, 64, 'meta', 'user-data', ['#include file:///mnt/stateful_partition/', 'workbench/cloud-config.yaml']),
+    N('server', 430, 30, 220, 570, 'meta', 'Metadata server', ['169.254.169.254', 'metadata.google.internal', 'header Metadata-Flavor: Google', 'only reachable from the VM']),
+    N('ga', 430, 620, 220, 76, 'meta', 'Guest attributes', ['notebooks/ · workbench-notebooks/', 'hostkeys/ · guest-agent/']),
+    N('c1', 900, 30, 380, 56, 'vm', 'cloud-init', ['user-data → writes units and scripts']),
+    N('c2', 900, 98, 380, 56, 'svc', 'workbench-configure agent', ['reads attributes → /tmp/ENV_INFO']),
+    N('c3', 900, 166, 380, 72, 'cont', 'jupyter-payload → payload-container', ['flags + env from ENV_INFO', 'reads the metadata server live']),
+    N('c4', 900, 250, 380, 56, 'agent', 'proxy-agent', ['BACKEND · PROXY from the proxy-* keys']),
+    N('c5', 900, 318, 380, 56, 'agent', 'idle-shutdown-agent', ['idle-timeout-seconds (documented)']),
+    N('c6', 900, 386, 380, 56, 'agent', 'health-agent', ['report-event-url · resource-url']),
+    N('c7', 900, 454, 380, 56, 'vm', 'guest agent · OS Login', ['enable-oslogin → OS Login user']),
+    N('c8', 900, 522, 380, 56, 'vm', 'logging · serial console · shutdown', ['google-logging-enabled · serial-port-logging-enable']),
+    N('c9', 900, 590, 380, 56, 'agent', 'optional extras', ['may read proxy-backend-id directly']),
+  ],
+  frames: [], labels: [],
+  edges: [].concat([[62, 'g1'], [134, 'g2'], [213, 'g3'], [292, 'g4'], [364, 'g5'], [436, 'g6'], [502, 'g7'], [568, 'g8']].map(([y, g]) => E(g + '_s', [[380, y], [430, y]])),
+    [[58, 'c1'], [126, 'c2'], [202, 'c3'], [278, 'c4'], [346, 'c5'], [414, 'c6'], [482, 'c7'], [550, 'c8']].map(([y, c]) => E('s_' + c, [[650, y], [900, y]])),
+    [E('s_c9', [[650, 596], [775, 596], [775, 618], [900, 618]]), E('ga_s', [[540, 620], [540, 600]])]),
+  steps: [
+    ST('d0', 'idea', 'Clean slate: metadata is just text on the instance', {n: [], e: [], fr: []}, [],
+      ['Instance <b>metadata</b> is a set of key-value strings stored on the VM resource in Compute Engine.', 'Google writes most of them; you can add more. Code on the VM reads them from a local metadata server. Nothing else reaches the VM\'s configuration.'], 'd0', 'the idea'),
+    ST('d1', 'where it lives', 'The metadata server serves them to the VM', {n: ['server'], e: [], fr: []}, ['server'],
+      ['The VM reaches the values at <code>http://metadata.google.internal</code> (<code>169.254.169.254</code>), a link-local address. A request needs the header <code>Metadata-Flavor: Google</code>.', 'The values are set by the Notebooks service agent when the instance is inserted and by later <code>setMetadata</code> calls, plus anything you supply yourself.'], 'd1', 'curl the server'),
+    ST('d2', 'the keys', 'About two dozen keys, in eight groups', {n: ['g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8'], e: ['g1_s', 'g2_s', 'g3_s', 'g4_s', 'g5_s', 'g6_s', 'g7_s', 'g8_s'], fr: []}, ['g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8'],
+      ['Identity and product, the container image, proxy and ingress, lifecycle, access and logging, feature flags, reporting, and a single <code>user-data</code> key that points at a cloud-config file.', 'Only the keys you pass on your own command (for example <code>idle-timeout-seconds</code>) are yours. The rest are Google\'s, and the exact set changes between image versions.'], 'd2', 'the keys', {fl: ['g1_s', 'g2_s', 'g3_s', 'g4_s', 'g5_s', 'g6_s', 'g7_s', 'g8_s']}),
+    ST('d3', 'early boot', 'user-data goes to cloud-init', {n: ['c1'], e: ['s_c1'], fr: []}, ['c1', 'g8'],
+      ['<code>user-data</code> is <code>#include file:///mnt/stateful_partition/workbench/cloud-config.yaml</code>. cloud-init reads the baked file, creates the users, and <b>writes about 20 systemd units</b> plus helper scripts.', 'Its last instruction runs <code>startup.sh</code>.'], 'd3', 'cloud-init', {fl: ['s_c1']}),
+    ST('d4', 'boot · configure', 'workbench-configure reads the attributes', {n: ['c2'], e: ['s_c2'], fr: []}, ['c2'],
+      ['A Docker container (<code>service_generator_agent</code>) reads the instance attributes and writes <b><code>/tmp/ENV_INFO</code></b>, a flat <code>KEY=VALUE</code> file.', 'Names and values line up: <code>custom-container-payload</code> becomes <code>WORKBENCH_CUSTOM_CONTAINER_PAYLOAD</code>, <code>instance-region</code> becomes <code>INSTANCE_REGION</code>, <code>proxy-backend-id</code> becomes <code>BACKEND_ID</code>.'], 'd4', '/tmp/ENV_INFO', {note: '<span class="tag inf">inferred</span>The agent that does the mapping is a binary that is not publicly documented. The correspondence is by name and value.', fl: ['s_c2']}),
+    ST('d5', 'boot · container', 'ENV_INFO becomes the Jupyter container\'s flags and environment', {n: ['c3'], e: ['s_c3'], fr: []}, ['c3', 'g2'],
+      ['systemd units load the file with <code>EnvironmentFile=/tmp/ENV_INFO</code> and expand it: the image to pull, <code>--user $CONTAINER_USER</code>, the FUSE flags, <code>-e GOOGLE_CLOUD_PROJECT</code> and <code>-e GOOGLE_CLOUD_REGION</code>.', 'These are fixed when the container starts. The container can additionally read the metadata server itself, at any time.'], 'd5', 'jupyter-payload.service', {fl: ['s_c3']}),
+    ST('d6', 'boot · agents', 'Proxy keys reach the proxy agent', {n: ['c4', 'c9'], e: ['s_c4', 's_c9'], fr: []}, ['c4', 'c9', 'g3'],
+      ['<code>proxy-backend-id</code> and <code>proxy-registration-url</code> become <code>BACKEND_ID</code> and <code>PROXY_REGISTRATION_URL</code>, which the proxy agent uses to register its outbound tunnel.', 'Optional extras in the image may read keys such as <code>proxy-backend-id</code> straight from the metadata server instead (for example to build a CORS origin): these are direct readers.'], 'd6', 'proxy-agent + extras', {fl: ['s_c4', 's_c9']}),
+    ST('d7', 'running', 'Lifecycle, reporting, access and logging keys', {n: ['c5', 'c6', 'c7', 'c8'], e: ['s_c5', 's_c6', 's_c7', 's_c8'], fr: []}, ['c5', 'c6', 'c7', 'c8', 'g4', 'g5', 'g7'],
+      ['<code>idle-timeout-seconds</code> drives idle shutdown (documented). <code>report-event-url</code> is where the health agent posts its HEALTH event.', '<code>enable-oslogin</code> is why you log in as an OS Login user such as <code>user_example_com</code>. Logging and serial-console keys feed Cloud Logging and the serial port (inferred from names). A <code>shutdown-script</code> key may point at a path that does not exist on a COS host: check before relying on it.'], 'd7', 'who reads what', {fl: ['s_c5', 's_c6', 's_c7', 's_c8']}),
+    ST('d8', 'reverse path', 'The VM writes back through guest attributes', {n: ['ga'], e: ['ga_s'], fr: []}, ['ga'],
+      ['Guest attributes are a write channel in the other direction: the VM puts values on the metadata server and anything with the right access can read them through the Compute API.', 'Typical namespaces include <code>notebooks/</code>, <code>workbench-notebooks/</code>, <code>hostkeys/</code> and <code>guest-agent/</code>. <code>enable-guest-attributes=TRUE</code> is required for idle shutdown (documented).'], 'd8', 'guest attributes', {fl: ['ga_s']}),
+    ST('d9', 'your keys', 'Adding your own values', {n: [], e: [], fr: []}, ['g2', 'g4'],
+      ['<code>container-env-file</code> and <code>container-custom-params</code> add environment variables and extra <code>nerdctl run</code> flags. <code>post-startup-script</code> (+ <code>-behavior</code>) adds a script to run after boot. All are documented.', 'An update (<code>gcloud workbench instances update --metadata=…</code>) becomes a Compute <code>setMetadata</code> call by the service agent. Container flags are fixed at start, so expect a restart to be needed. The idle timeout is documented to apply live.'], 'd9', 'updating metadata', {note: '<span class="tag inf">inferred</span>The restart requirement for container keys is a reasoned expectation, not a tested result.'}),
+  ],
+};
+
+/* ================= scene 5: disks ================= */
+const SC_DISKS = {
+  id: 'disks', tab: '5 · Disks', intro: 'partitions and mounts',
+  nodes: [
+    N('pd1', 20, 60, 250, 100, 'cloud', 'Persistent disk (boot)', ['INSTANCE-boot', 'size you choose · pd-standard · SCSI', 'cloned from the host image']),
+    N('pd2', 20, 380, 250, 100, 'cloud', 'Persistent disk (data)', ['INSTANCE-data-workspace', 'size you choose · pd-standard · SCSI', 'blank at creation']),
+    N('sda1', 310, 60, 290, 64, 'disk', 'sda1 · most of the disk', ['stateful partition (ext4, read-write)']),
+    N('sda3', 310, 138, 290, 64, 'host', 'sda3 · ~2 GB → vroot', ['root, read-only (dm-verity)', 'boots from vmlinuz.A']),
+    N('sda8', 310, 216, 290, 52, 'vm', 'sda8 · small', ['OEM partition']),
+    N('sdao', 310, 282, 290, 64, 'vm', 'sda2, 4–7, 9–12', ['small COS partitions', 'roles: standard COS layout']),
+    N('sdb', 310, 380, 290, 64, 'disk', 'sdb · ext4', ['the data disk']),
+    N('m_state', 650, 60, 300, 100, 'svc', '/mnt/stateful_partition and /var', ['most of the boot disk', 'workbench scripts, cloud-config,', 'Docker + containerd data, gcfs cache']),
+    N('m_root', 650, 174, 300, 52, 'svc', '/   (read-only)', ['~2 GB · mostly full']),
+    N('m_oem', 650, 240, 300, 52, 'svc', '/usr/share/oem', []),
+    N('m_home', 650, 380, 300, 64, 'disk', '/home/jupyter', ['ext4 · rw · your workspace']),
+    N('c_agents', 990, 60, 280, 100, 'agent', 'agent containers', ['/tmp (ENV_INFO, health log)', '/mnt/stateful_partition/workbench', 'docker.sock (health-agent)']),
+    N('c_fuse', 990, 178, 280, 64, 'svc', 'gcfsd FUSE mount', ['/run/gcfsd/mnt: layers on demand']),
+    N('c_pay', 990, 370, 280, 100, 'cont', 'payload-container', ['/ = overlay on sda1', '/home/jupyter = bind mount of sdb', '/dev/shm = tmpfs']),
+    N('c_open', 990, 484, 280, 60, 'agent', 'optional extras', ['/home/jupyter = bind mount']),
+    N('summary', 310, 580, 970, 120, 'ext', 'What happens to your data', ['Survives stop and start: sdb (/home/jupyter) and the stateful partition (images, scripts, gcfs cache).', 'Recreated every start: container writable layers, /tmp/ENV_INFO, units written by cloud-init.', 'Deleted with the instance: BOTH disks (autoDelete: true), including /home/jupyter.', 'While stopped: disks stay (READY) and keep billing; compute billing stops.']),
+  ],
+  frames: [{id: 'vmE', x: 290, y: 16, w: 990, h: 548, label: 'Inside the VM', lx: 306, ly: 12}],
+  labels: [],
+  edges: [
+    E('pd1_s1', [[270, 95], [310, 92]]), E('pd1_s3', [[270, 110], [310, 170]]), E('pd1_s8', [[270, 125], [310, 242]]), E('pd1_so', [[270, 140], [310, 314]]),
+    E('pd2_sdb', [[270, 430], [310, 412]]),
+    E('s1_m', [[600, 92], [650, 92]]), E('s3_m', [[600, 170], [650, 200]]), E('s8_m', [[600, 242], [650, 266]]), E('sdb_m', [[600, 412], [650, 412]]),
+    E('state_agents', [[950, 110], [990, 110]]),
+    E('home_pay', [[950, 412], [990, 412]]),
+    E('home_open', [[950, 430], [968, 430], [968, 514], [990, 514]]),
+  ],
+  steps: [
+    ST('e0', 'idea', 'Clean slate: the VM sees two block devices', {n: [], e: [], fr: ['vmE']}, [],
+      ['Inside the VM there will be two block devices: <code>sda</code> (the boot disk) and <code>sdb</code> (the data disk). This scene shows what is on each, where it is mounted, and what each container can see.'], 'e0', 'the idea'),
+    ST('e1', 'at creation', 'Two persistent disks are attached by the insert call', {n: ['pd1', 'pd2'], e: [], fr: []}, ['pd1', 'pd2'],
+      ['The boot disk is <code>pd-standard</code>, cloned from the host image. The data disk is <code>pd-standard</code> too, and blank. You choose the sizes (for example around 150 GB and 100 GB by default).', 'Both attach over SCSI, read-write, with <b><code>autoDelete: true</code></b>. Device names are <code>boot</code> and <code>data-workspace</code>.'], 'e1', 'disks describe'),
+    ST('e2', 'boot disk', 'The boot disk is a COS partition table', {n: ['sda1', 'sda3', 'sda8', 'sdao'], e: ['pd1_s1', 'pd1_s3', 'pd1_s8', 'pd1_so'], fr: []}, ['sda1', 'sda3'],
+      ['<code>sda</code> has the standard COS dozen partitions. The big one, <b><code>sda1</code></b>, is the stateful partition. <b><code>sda3</code></b> (about 2 GB) is the root filesystem; the kernel command line says <code>vmlinuz.A</code>, so it is the active root.', 'The small ones are standard COS partitions (kernels, a second root, the OEM partition, EFI). Their roles come from the COS layout.'], 'e2', 'lsblk', {note: '<span class="tag inf">inferred</span>Partition roles other than sda1, sda3 and sda8 come from the standard COS layout.', fl: ['pd1_s1', 'pd1_s3']}),
+    ST('e3', 'root', 'The root is read-only and verified', {n: ['m_root', 'm_oem'], e: ['s3_m', 's8_m'], fr: []}, ['m_root', 'sda3'],
+      ['<code>sda3</code> appears as <code>vroot</code>, a <b>dm-verity</b> device mounted at <code>/</code> read-only, and mostly full. There is no package manager, and nothing you install on the host would persist.', '<code>/usr/share/oem</code> comes from <code>sda8</code>.'], 'e3', 'root mount', {fl: ['s3_m']}),
+    ST('e4', 'stateful partition', 'The stateful partition holds everything that changes', {n: ['m_state', 'c_agents', 'c_fuse'], e: ['s1_m', 'state_agents'], fr: []}, ['m_state', 'c_agents'],
+      ['<code>sda1</code> is mounted at <code>/mnt/stateful_partition</code> and <code>/var</code>, and holds most of the boot disk.', 'It holds the Workbench scripts and cloud-config, Docker and containerd data, and the gcfs layer cache. The agent containers bind-mount parts of it (<code>/mnt/stateful_partition/workbench</code>, <code>/tmp</code>).'], 'e4', 'df + findmnt', {fl: ['s1_m', 'state_agents']}),
+    ST('e5', 'data disk', 'The data disk becomes /home/jupyter', {n: ['sdb', 'm_home'], e: ['pd2_sdb', 'sdb_m'], fr: []}, ['m_home', 'sdb', 'pd2'],
+      ['<code>workbench-mount-disk</code> finds <code>/dev/disk/by-id/google-data-workspace</code> (<code>sdb</code>) and mounts it at <b><code>/home/jupyter</code></b> as ext4, remounts it with <code>exec</code>, and changes its owner to the container user (root).', 'On first boot, the pull script also copies the Jupyter image\'s <code>/home</code> content onto it. The disk is blank at creation, so something must format it; that step is not visible in the scripts (inferred).'], 'e5', 'mount-disk.sh', {fl: ['pd2_sdb', 'sdb_m']}),
+    ST('e6', 'containers', 'The containers see /home/jupyter by bind mount', {n: ['c_pay', 'c_open'], e: ['home_pay', 'home_open'], fr: []}, ['c_pay', 'c_open', 'm_home'],
+      ['<code>payload-container</code> bind-mounts <code>/home/jupyter</code> (the command line may list it more than once, harmlessly). Its root is an <b>overlay on the stateful partition</b>, so anything written elsewhere is lost when the container is recreated.', 'Optional extras that mount the same directory write to your data disk too.'], 'e6', 'container mounts', {fl: ['home_pay', 'home_open']}),
+    ST('e7', 'persistence', 'What survives, what is recreated, what is deleted', {n: ['summary'], e: [], fr: []}, ['summary'],
+      ['<b>Survives stop and start:</b> <code>/home/jupyter</code> and the stateful partition. <b>Recreated:</b> container writable layers, <code>/tmp/ENV_INFO</code>, units written by cloud-init.', '<b>Deleted with the instance:</b> both disks. <b>While stopped:</b> disks stay and keep billing.'], 'e7', 'summary', {warn: true, note: '<span class="tag warn">heads-up</span>Deleting the instance deletes <code>/home/jupyter</code>.'}),
+  ],
+};
+
+/* ================= scene 3: boot (data defined above) ================= */
+const SC_BOOT = {id: 'boot', tab: '3 · Boot', intro: 'startup.sh, step by step', nodes: NODES, frames: FRAMES, labels: LABELS, edges: EDGES, steps: STEPS, segs: SEGS};
+
+const SCENES = [SC_BUILD, SC_SUPPLY, SC_BOOT, SC_META, SC_DISKS];
+
+/* ---------------- svg scaffolding ---------------- */
+const svg = $('#stage');
+const el = (n, a = {}, p) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; };
+const defs = el('defs', {}, svg);
+const mk = (id) => { const m = el('marker', {id, viewBox: '0 0 10 10', refX: '8', refY: '5', markerWidth: '10', markerHeight: '10', orient: 'auto-start-reverse', markerUnits: 'userSpaceOnUse'}, defs); el('path', {d: 'M0,1 L9,5 L0,9 z', class: 'arrow'}, m); };
+mk('ar');
+
+let frameEls = {}, nodeEls = {}, edgeEls = {}, lblEls = {}, NODE_BY_ID = {};
+
+function drawText(g, n, lines) {
+  g.querySelectorAll('text').forEach(t => t.remove());
+  const big = n.h > 100;
+  const t = el('text', {x: n.x + 12, y: n.y + (n.h <= 36 ? 21 : 22), class: 't'}, g); t.textContent = n.t;
+  (lines || []).forEach((s, i) => { if (!s) return; const x = el('text', {x: n.x + 12, y: n.y + 40 + i * (big ? 17 : 14), class: 's'}, g); x.textContent = s; });
+}
+
+function buildScene(S) {
+  Array.from(svg.childNodes).forEach(c => { if (c !== defs) svg.removeChild(c); });
+  frameEls = {}; nodeEls = {}; edgeEls = {}; lblEls = {}; NODE_BY_ID = {};
+  S.frames.forEach(f => {
+    const g = el('g', {class: 'frame', id: 'f-' + f.id}, svg);
+    el('rect', {x: f.x, y: f.y, width: f.w, height: f.h}, g);
+    const t = el('text', {x: f.lx, y: f.ly + 1}, g); t.textContent = f.label;
+    frameEls[f.id] = g;
+  });
+  S.labels.forEach(l => { const g = el('g', {class: 'lbl'}, svg); const t = el('text', {x: l.x, y: l.y}, g); t.textContent = l.text; lblEls[l.id] = g; });
+  S.edges.forEach(e => {
+    const g = el('g', {class: 'edge' + (e.sample ? ' sample' : ''), id: 'e-' + e.id}, svg);
+    const d = e.pts.map((p, i) => (i ? 'L' : 'M') + p[0] + ',' + p[1]).join(' ');
+    const path = el('path', {d, class: 'line', 'marker-end': 'url(#ar)'}, g);
+    if (e.both) path.setAttribute('marker-start', 'url(#ar)');
+    if (e.lbl) { const t = el('text', {x: e.l[0], y: e.l[1]}, g); t.textContent = e.lbl; }
+    edgeEls[e.id] = g;
+  });
+  S.nodes.forEach(n => {
+    NODE_BY_ID[n.id] = n;
+    const g = el('g', {class: 'node k-' + n.k, id: 'n-' + n.id}, svg);
+    el('rect', {x: n.x, y: n.y, width: n.w, height: n.h}, g);
+    drawText(g, n, n.s);
+    nodeEls[n.id] = g;
+  });
+}
+
+/* ---------------- state ---------------- */
+let sc = 0, cur = 0, playing = false, timer = null, timers = [], sampleOn = $('#sample').checked;
+const S_ = () => SCENES[sc];
+const active = () => S_().steps.filter(s => !s.sample || sampleOn);
+
+function revealedUpTo(list, idx) {
+  const nodes = new Set(), edges = new Set(), frames = new Set(), set = {};
+  for (let i = 0; i <= idx; i++) {
+    const s = list[i];
+    s.r.n.forEach(x => nodes.add(x)); s.r.e.forEach(x => edges.add(x)); (s.r.fr || []).forEach(x => frames.add(x));
+    if (s.set) for (const k in s.set) set[k] = s.set[k];
+  }
+  return {nodes, edges, frames, set};
+}
+
+function colourTerm(txt) {
+  return txt.split('\n').map((ln, i) => {
+    const esc = ln.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    let cls = '';
+    if (/^\s*\$ /.test(ln)) cls = 'c'; else if (/^\s*#/.test(ln)) cls = 'd'; else if (/(unsecured|NO PASSWORD|DENIED)/.test(ln)) cls = 'r'; else if (/(ACTIVE|Response: <Response \[200\]>)/.test(ln)) cls = 'g';
+    return '<span class="ln ' + cls + '" style="animation-delay:' + Math.min(i * 45, 900) + 'ms">' + (esc || ' ') + '</span>';
+  }).join('');
+}
+
+function render() {
+  const S = S_(), list = active();
+  if (cur >= list.length) cur = list.length - 1;
+  const s = list[cur];
+  timers.forEach(clearTimeout); timers = [];
+  const R = revealedUpTo(list, cur);
+
+  Object.entries(frameEls).forEach(([id, g]) => g.classList.toggle('on', R.frames.has(id)));
+  Object.entries(lblEls).forEach(([id, g]) => g.classList.toggle('on', R.nodes.has(id)));
+  Object.entries(nodeEls).forEach(([id, g]) => {
+    g.classList.toggle('on', R.nodes.has(id));
+    g.classList.toggle('focus', (s.f || []).indexOf(id) >= 0);
+    const n = NODE_BY_ID[id];
+    let lines = n.s;
+    if (R.set[id] !== undefined && R.set[id] !== null) lines = R.set[id];
+    drawText(g, n, lines);
+  });
+  svg.classList.toggle('hasfocus', (s.f || []).length > 0);
+  Object.entries(edgeEls).forEach(([id, g]) => { g.classList.toggle('on', R.edges.has(id)); g.classList.remove('flow'); });
+  (s.fl || []).forEach((id, i) => {
+    const g = edgeEls[id]; if (!g) return;
+    g.classList.add('on');
+    if (s.seq) timers.push(setTimeout(() => g.classList.add('flow'), 500 + i * 650)); else g.classList.add('flow');
+  });
+
+  $('#caption').innerHTML = '<div class="meta"><span class="pill">' + S.tab + '</span><span class="pill">Step ' + cur + ' of ' + (list.length - 1) + '</span><span class="pill">' + s.time + '</span>' + (s.sample ? '<span class="tag smp">sample</span>' : '') + '</div>' +
+    '<h3>' + s.title + '</h3><ul>' + s.what.map(w => '<li>' + w + '</li>').join('') + '</ul>' +
+    (s.bar ? '<div class="bar run"><i></i></div><div class="meta">typically minutes on a real VM, shown here in a few seconds</div>' : '') +
+    (s.note ? '<div class="callout' + (s.warn ? ' warn' : (s.sample ? ' smp' : '')) + '"><p>' + s.note + '</p></div>' : '');
+  $('#term-title').textContent = s.evt || 'evidence';
+  $('#term').innerHTML = colourTerm(ev(s.ev));
+
+  const last = sc === SCENES.length - 1, atEnd = cur === list.length - 1;
+  $('#stepno').textContent = 'Scene ' + (sc + 1) + '/' + SCENES.length + ' · step ' + cur + '/' + (list.length - 1);
+  $('#b-back').disabled = sc === 0 && cur === 0;
+  $('#b-next').disabled = last && atEnd;
+  $('#b-next').textContent = atEnd && !last ? 'Next scene ▶' : 'Next ▶';
+  $('#b-reset').disabled = cur === 0 && !playing;
+  $('#b-play').textContent = playing ? '❚❚ Pause' : (last && atEnd ? '↻ Replay tour' : '▶ Play');
+  document.querySelectorAll('.dot').forEach((d, i) => { d.classList.toggle('cur', i === cur); d.classList.toggle('done', i < cur); });
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('cur', i === sc));
+  $('#sample-wrap').hidden = S.id !== 'boot';
+
+  const tl = $('#timeline'); tl.hidden = !S.segs;
+  if (S.segs) {
+    const seg = s.tl, maxSeg = list.slice(0, cur + 1).reduce((m, x) => Math.max(m, x.tl), -1);
+    document.querySelectorAll('.seg').forEach((d, i) => { d.classList.toggle('cur', i === seg); d.classList.toggle('done', i < maxSeg || (i <= maxSeg && i !== seg)); });
+  }
+  const tn = $('#timeline-note'); if (tn) tn.hidden = !S.segs;
+}
+
+function buildDots() {
+  const list = active(); const box = $('#dots'); box.innerHTML = '';
+  list.forEach((s, i) => {
+    const b = document.createElement('button'); b.className = 'dot' + (s.sample ? ' smp' : ''); b.type = 'button'; b.textContent = i; b.title = i + '. ' + s.title; b.setAttribute('aria-label', 'Step ' + i + ': ' + s.title);
+    b.addEventListener('click', () => { stop(); cur = i; render(); });
+    box.appendChild(b);
+  });
+}
+function buildTabs() {
+  const t = $('#tabs'); t.innerHTML = '';
+  SCENES.forEach((S, i) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'tab'; b.innerHTML = '<b>' + S.tab + '</b><span>' + S.intro + '</span>';
+    b.addEventListener('click', () => { stop(); setScene(i, 0); });
+    t.appendChild(b);
+  });
+}
+function buildTimeline(S) {
+  const t = $('#timeline'); t.innerHTML = '';
+  (S.segs || []).forEach(s => { const d = document.createElement('div'); d.className = 'seg' + (s.c ? ' ' + s.c : ''); d.innerHTML = '<b>' + s.t + '</b>' + s.d; t.appendChild(d); });
+}
+function setScene(i, step) {
+  sc = i; buildScene(S_()); buildTimeline(S_()); buildDots();
+  const n = active().length;
+  cur = step === 'last' ? n - 1 : Math.min(step, n - 1);
+  render();
+}
+
+/* ---------------- controls ---------------- */
+function stop() { playing = false; clearTimeout(timer); timer = null; }
+function advance() {          // returns false when the whole tour is finished
+  const n = active().length;
+  if (cur < n - 1) { cur++; render(); return true; }
+  if (sc < SCENES.length - 1) { setScene(sc + 1, 0); return true; }
+  return false;
+}
+function tick() {
+  if (!playing) return;
+  if (!advance()) { stop(); render(); return; }
+  const s = active()[cur];
+  timer = setTimeout(tick, +$('#speed').value + (s.bar ? 1500 : 0) + (cur === 0 ? 800 : 0));
+}
+function play() {
+  if (playing) { stop(); render(); return; }
+  const last = sc === SCENES.length - 1;
+  if (last && cur === active().length - 1) setScene(0, 0);
+  playing = true; render();
+  timer = setTimeout(tick, cur === 0 ? 1200 : +$('#speed').value);
+}
+$('#b-play').addEventListener('click', play);
+$('#b-next').addEventListener('click', () => { stop(); advance(); render(); });
+$('#b-back').addEventListener('click', () => {
+  stop();
+  if (cur > 0) { cur--; render(); }
+  else if (sc > 0) setScene(sc - 1, 'last');
+});
+$('#b-reset').addEventListener('click', () => { stop(); cur = 0; render(); });
+$('#sample').addEventListener('change', e => {
+  const keyBefore = active()[cur] && active()[cur].key;
+  sampleOn = e.target.checked; stop(); buildDots();
+  const list = active(); const i = list.findIndex(s => s.key === keyBefore); cur = i >= 0 ? i : Math.min(cur, list.length - 1); render();
+});
+document.addEventListener('keydown', e => {
+  if (['INPUT', 'SELECT', 'TEXTAREA'].indexOf(e.target.tagName) >= 0) return;
+  const demo = $('#demo').getBoundingClientRect();
+  if (demo.bottom < 0 || demo.top > innerHeight) return;
+  if (e.key === ' ') { e.preventDefault(); play(); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); $('#b-next').click(); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); $('#b-back').click(); }
+  else if (e.key === 'Home') { e.preventDefault(); $('#b-reset').click(); }
+});
+
+function pinSide() {
+  const bar = $('#controls'), side = $('#side'); if (!bar || !side) return;
+  const top = 52 + bar.offsetHeight + 24;
+  side.style.top = top + 'px'; side.style.maxHeight = 'calc(100vh - ' + (top + 16) + 'px)';
+}
+window.addEventListener('resize', pinSide);
+buildTabs(); setScene(0, 0); pinSide();
+window.__demo = {
+  scenes: () => SCENES.length, scene: () => sc, steps: () => active().length,
+  setScene: (i, j) => { stop(); setScene(i, j || 0); }, go: i => { stop(); cur = i; render(); },
+  state: () => ({sc, cur, playing}),
+};
+})();
+</script></body></html>
