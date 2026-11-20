@@ -1,0 +1,100 @@
+#!/bin/ksh
+# dskit collector (A1). Thin, deterministic, resumable. No model, no network except the DataStage tools.
+# Runs on the customer box (MKS ksh on the Citrix client, or ksh on the engine tier).
+# Design: work/datastage-migration-accelerator/docs/06-plugin-architecture.md
+#
+# Rules this script keeps:
+#   1. Secrets are scrubbed in the pipe. Raw tool output is never written to the snapshot.
+#      Exception: DSX and XML exports are written by dsexport itself. They are scanned, not rewritten
+#      (rewriting would break byte identity for the reader). Hits go to secrets.tsv as name and line only.
+#   2. The password is prompted once, never stored, never logged.
+#   3. Every artefact records the command that made it (without credentials), its size and hash.
+#   4. Failures are listed in failures.csv and never fatal. Re-running with --resume continues.
+#   5. A snapshot is never overwritten. Each run makes a new dated folder.
+
+# 0.1.0 first build. 0.2.1: password asked first, as a full line, with progress lines. 0.2.0: ./ for bare config names, --within, --selftest, --preflight, no stty on Windows, visible prompt fallback.
+DSKIT_COLLECTOR_VERSION="0.2.1"
+
+usage() {
+cat <<'EOF'
+Usage: dskit-collect.ksh [-c conf] ACTION [options]
+
+Actions (pick one):
+  --probe                 List assets (istool preview over PREVIEW_GLOBS). No content is extracted.
+  --all                   Probe, then extract every job, sequence and server job found.
+  --jobs FILE             Extract the job names listed in FILE (one per line).
+  --seed NAME[,NAME...]   Extract the seed(s) and walk to their child jobs.
+                          Add --within TEXT to follow only children whose category contains TEXT
+                          (for example --within 0027_eComm_AdvSearch). Others are listed as "outside" in scope.txt.
+  --selftest              Test the scrub and the shell and awk features on THIS box. No DataStage tool, no password.
+  --preflight             Read-only report on this box: shell, awk, tools present. Add --tools-help to print each
+                          tool's own help, and --auth to also list projects and jobs (asks for the password).
+
+Options:
+  -c FILE                 Config file (default ./dskit.conf)
+  --resume DIR            Continue an existing snapshot folder instead of making a new one
+  --whole-project         Also try a whole-project dsexport (routines, containers, table defs). Non-fatal.
+  --stageinfo             Also run dsjob -stageinfo per stage (slow: use only for a few jobs)
+  --no-history            Skip run history (-logsum)
+  --dry-run               Print the plan. Run no DataStage tool.
+  -h, --help              This text
+EOF
+}
+
+# ---------- arguments ----------
+CONF="./dskit.conf"; ACTION=""; JOBS_FILE=""; SEED=""; RESUME=""
+WHOLE=0; STAGEINFO=0; HISTORY=1; DRY=0; TOOLS_HELP=0; AUTH=0; WITHIN=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -c) CONF="$2"; shift 2;;
+        --probe) ACTION="probe"; shift;;
+        --all) ACTION="all"; shift;;
+        --jobs) ACTION="jobs"; JOBS_FILE="$2"; shift 2;;
+        --seed) ACTION="seed"; SEED="$2"; shift 2;;
+        --within) WITHIN="$2"; shift 2;;
+        --selftest) ACTION="selftest"; shift;;
+        --preflight) ACTION="preflight"; shift;;
+        --tools-help) TOOLS_HELP=1; shift;;
+        --auth) AUTH=1; shift;;
+        --resume) RESUME="$2"; shift 2;;
+        --whole-project) WHOLE=1; shift;;
+        --stageinfo) STAGEINFO=1; shift;;
+        --no-history) HISTORY=0; shift;;
+        --dry-run) DRY=1; shift;;
+        --version) echo "dskit-collect ${DSKIT_COLLECTOR_VERSION}"; exit 0;;
+        -h|--help) usage; exit 0;;
+        *) echo "Unknown option: $1" >&2; usage >&2; exit 2;;
+    esac
+done
+echo "dskit-collect ${DSKIT_COLLECTOR_VERSION}"
+[ -z "${ACTION}" ] && { usage >&2; exit 2; }
+[ ! -f "${CONF}" ] && { echo "Config not found: ${CONF} (copy dskit.conf.example)" >&2; exit 2; }
+case "${CONF}" in */*) ;; *) CONF="./${CONF}";; esac   # ksh searches PATH for a name without a slash
+. "${CONF}"
+
+# Defaults for anything the config leaves out.
+: "${HISTORY_MAX:=50}"
+: "${ENGINE_VERSION:=11.7}"
+: "${PREVIEW_GLOBS:=Jobs/*/*.*}"
+: "${SCRUB_NAME_PATTERN:=PASS|PWD|PWORD|SECRET|TOKEN|KEY|CRED|USER|LOGIN|(^|_)UN\$}"
+for v in DOMAIN SERVER USER PROJECT DSJOB DSEXPORT ISTOOL OUTDIR; do
+    eval "val=\${$v:-}"
+    [ -z "${val}" ] && { echo "Config is missing ${v}" >&2; exit 2; }
+done
+
+umask 077
+
+# ---------- password (asked first, once, never stored or logged) ----------
+NEEDPW=1
+[ "${ACTION}" = "selftest" ] && NEEDPW=0
+[ "${ACTION}" = "preflight" ] && [ "${AUTH}" -eq 0 ] && NEEDPW=0
+echo "Config loaded: project ${PROJECT}, user ${USER}."
+if [ "${DRY}" -eq 0 ] && [ "${NEEDPW}" -eq 1 ] && [ -z "${DS_PASSWORD:-}" ]; then
+    if [ -t 0 ]; then
+        # The Windows console under MKS ksh cannot hide typing and stty can kill the shell there. Do not call it there.
+        case "$(uname -s 2>/dev/null)" in
+            Windows*|CYGWIN*|MINGW*|MSYS*) HIDE=0;;
+            *) HIDE=1;;
+        esac
+        echo ">>> Type the password for ${USER} and press Enter."
+        [ "${HIDE}" -eq 0 ] && echo ">>> (Typing is visible on this console. Run cls afterwards.)"
